@@ -164,6 +164,7 @@
 </div></div>
 <div id="toast"></div>
 
+<script src="backend.js"></script>
 <script src="engine.js"></script>
 <script src="sync.js"></script>
 <script>
@@ -179,12 +180,16 @@ const LS = {
 };
 
 /* ═══════════════ state ═══════════════ */
-let settings = LS.get('cc.settings') || { db: '', ch: rid(10) };
+// ch  = channel code (goes in the overlay link; anyone with it can watch)
+// key = scorer key (secret; only devices holding it can post scores to this channel)
+let settings = LS.get('cc.settings') || {};
 const qp = new URLSearchParams(location.search);
-if (qp.get('ch')) {                               // opened from a "score on another device" link
-  settings.ch = qp.get('ch'); if (qp.has('db')) settings.db = qp.get('db');
+if (qp.get('ch') && qp.get('k')) {                // opened from a "score on another device" link
+  settings = { ch: qp.get('ch'), key: qp.get('k') };
   history.replaceState(null, '', location.pathname);
 }
+if (!settings.ch || !settings.key) settings = { ch: rid(10), key: rid(24) };
+delete settings.db;
 LS.set('cc.settings', settings);
 let game = LS.get('cc.game');                     // { setup, actions, seq }
 let library = LS.get('cc.library', {});           // saved teams by name
@@ -192,7 +197,7 @@ let draft = null, cloudGame = null;
 let m = null, lastEv = null, sync;
 
 function connect() {
-  sync = new CricketSync({ db: settings.db, ch: settings.ch });
+  sync = new CricketSync({ ch: settings.ch, key: settings.key });
   sync.onStatus = setPill;
   setPill(sync.mode === 'local' ? 'local' : 'ok');
   sync.put('prefs', prefs);
@@ -204,7 +209,8 @@ function connect() {
   }
 }
 function setPill(s) {
-  const txt = { local: 'This device only', ok: 'Live', saving: 'Sending…', retry: 'Offline – will resend', denied: 'Database blocked' }[s] || s;
+  const txt = { local: 'This device only', ok: 'Live', saving: 'Sending…', retry: 'Offline – will resend', denied: 'Not allowed – wrong key', toobig: 'Logo too big' }[s] || s;
+  if (s === 'denied' || s === 'toobig') s = 'denied';
   const p = $('#pill'); p.className = 'pill ' + s; p.textContent = txt;
 }
 const team = k => game.setup.teams[k];
@@ -264,9 +270,9 @@ function sendCmd(kind, label) {
   sync.put('cmd', { id: rid(6) + Date.now(), kind }); toast(label + (sync.mode === 'local' ? ' (this device only)' : '')); }
 
 /* ═══════════════ links ═══════════════ */
-function linkTo(page) {
+function linkTo(page, withKey) {
   const u = new URL(page, location.href); u.search = ''; u.hash = '';
-  u.searchParams.set('ch', settings.ch); if (settings.db) u.searchParams.set('db', settings.db);
+  u.searchParams.set('ch', settings.ch); if (withKey) u.searchParams.set('k', settings.key);
   return u.href;
 }
 
@@ -386,34 +392,30 @@ function moreSheet() {
   });
 }
 function settingsSheet() {
-  const olink = linkTo('overlay.html'), slink = linkTo('score.html');
+  const olink = linkTo('overlay.html'), slink = linkTo('score.html', true);
+  const where = sync.mode === 'cloud' ? 'Connected to the cricket-live server.' : 'No server set up – this device only.';
   openSheet('Settings', `
     <div class="set"><h4>Overlay link for PRISM</h4>
       <p class="hint">Paste this into PRISM's Web widget on the streaming phone. It stays the same for every match.</p>
       <div class="copy"><input readonly value="${esc(olink)}"><button class="ghost" data-act="copyo">Copy</button></div>
       <a class="link" href="${esc(olink)}" target="_blank" rel="noopener">Open overlay to check it →</a></div>
-    <div class="set"><h4>Database (Firebase)</h4>
-      <p class="hint">Sends the score to the streaming phone. Leave blank to only test on this device.</p>
-      <input id="dburl" placeholder="https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app" value="${esc(settings.db)}" autocapitalize="off" autocorrect="off">
-      <div class="sheet-foot"><button class="primary" data-act="savedb">Save &amp; test</button></div><p class="hint" id="dbmsg"></p></div>
     <div class="set"><h4>Score from another phone or iPad</h4>
-      <p class="hint">Open this link on the other device and it joins the same channel (<b>${esc(settings.ch)}</b>), including any match in progress.</p>
-      <div class="copy"><input readonly value="${esc(slink)}"><button class="ghost" data-act="copys">Copy</button></div></div>`,
+      <p class="hint">Open this link on the other device to score the same match. <b>Keep it private</b> – it includes your scorer key, so anyone with it can change the score.</p>
+      <div class="copy"><input readonly value="${esc(slink)}"><button class="ghost" data-act="copys">Copy</button></div></div>
+    <div class="set"><h4>Connection</h4><p class="hint">${where} Channel <b>${esc(settings.ch)}</b>.</p>
+      <div class="sheet-foot"><button class="ghost" data-act="test">Test connection</button></div><p class="hint" id="testmsg"></p></div>`,
   async d => {
     const copy = async t => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch (e) { toast('Copy failed – press and hold the link'); } };
     if (d.act === 'copyo') return copy(olink);
     if (d.act === 'copys') return copy(slink);
-    if (d.act === 'savedb') {
-      const v = $('#dburl').value.trim().replace(/\/+$/, ''), msg = $('#dbmsg');
-      if (v && !/^https?:\/\//.test(v)) { msg.textContent = 'That should start with https://'; return; }
-      settings.db = v; LS.set('cc.settings', settings); connect();
-      if (!v) { msg.textContent = 'Saved – this device only.'; return; }
+    if (d.act === 'test') {
+      const msg = $('#testmsg');
+      if (sync.mode !== 'cloud') { msg.textContent = 'This device only – nothing to test.'; return; }
       msg.textContent = 'Testing…';
       try {
-        const r = await fetch(sync.url('ping'), { method: 'PUT', body: JSON.stringify(Date.now()) });
-        msg.textContent = r.ok ? '✓ Connected. Copy the overlay link again – it has changed.' : r.status === 401 || r.status === 403 ? '✗ Database said no – check the rules step.' : '✗ Error ' + r.status;
-        if (r.ok && game) publish('other', null, true);
-      } catch (e) { msg.textContent = '✗ Could not reach that address.'; }
+        const r = await fetch(sync.url('ping'), { method: 'PUT', headers: sync.headers(), body: JSON.stringify(Date.now()) });
+        msg.textContent = r.ok ? '✓ Connected – scores are reaching the server.' : r.status === 403 ? '✗ This channel belongs to a different scorer key.' : '✗ Error ' + r.status;
+      } catch (e) { msg.textContent = '✗ No internet connection.'; }
     }
   });
 }

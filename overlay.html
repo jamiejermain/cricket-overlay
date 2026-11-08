@@ -200,11 +200,12 @@
 </div>
 
 <script src="config.js"></script>
+<script src="backend.js"></script>
 <script src="engine.js"></script>
 <script src="sync.js"></script>
 <script>
 /* ═══════════════ helpers ═══════════════
-   Modes:  overlay.html?ch=CODE[&db=URL]  → live: follows a scorer / PlayHQ channel
+   Modes:  overlay.html?ch=CODE           → live: follows a scorer / PlayHQ channel (add &local to test offline)
            overlay.html[?demo]             → plays a pretend match            */
 const CFG = window.OVERLAY_CONFIG;
 const { Match, fromState, normaliseSetup, statusList, other, oversStr, surname, shortName, ordinal, list } = window.CricketEngine;
@@ -459,7 +460,7 @@ function onBall(ev) {
    Whatever publishes there, the overlay just draws it.                       */
 function startLive() {
   hasGame = false; setChrome(false);
-  const sync = new CricketSync({ db: params.get('db') || CFG.firebaseUrl || '', ch: params.get('ch') });
+  const sync = new CricketSync({ ch: params.get('ch'), api: params.has('local') ? '' : (params.get('api') ?? undefined) });
   let gameId = null, lastSeq = null;
   sync.listen('live', live => {
     if (!live || !live.setup || !live.tick || !live.tick.state) { hasGame = false; director.clear(); return; }

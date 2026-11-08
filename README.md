@@ -2,48 +2,50 @@
 
 | Page | What it's for |
 |---|---|
-| `score.html` | Live scorer for a phone, foldable or iPad. Set up teams, score ball by ball, control the overlay. |
-| `overlay.html?ch=CODE&db=URL` | The overlay for PRISM's Web widget. Follows whatever is published on that channel. |
+| `score.html` | Live scorer for a phone, foldable or iPad. Set up teams (colours, logos, players), score ball by ball, control the overlay. |
+| `overlay.html?ch=CODE` | The overlay for PRISM's Web widget. Follows whatever is published on that channel. Get the exact link from the scorer's Settings. |
 | `overlay.html?demo` | Pretend match with test controls. |
 
 ## How the pieces fit
 
 ```
- score.html  ─┐                              ┌─> overlay.html (PRISM, streaming phone)
-              ├─> Firebase /ch/<code>/live ──┤
- PlayHQ ──────┘    (one shared format)       └─> (any other screen)
- (later, via a small webhook receiver)
+ score.html ──PUT (scorer key)──┐
+                                ├─> AWS: API Gateway → Lambda → DynamoDB ──poll 1/s──> overlay.html (PRISM)
+ PlayHQ webhooks ──POST─────────┘    (stack "cricket-live", ap-southeast-2)
 ```
 
-Everything for one stream lives under `/ch/<code>/` in a Firebase Realtime Database:
+Everything runs in the personal AWS account **730335344374** (profile `songbook`, region `ap-southeast-2`). It's one CloudFormation stack called `cricket-live`, and every resource is tagged `project=cricket-live`.
 
-| Path | Written by | Contents |
+| Resource | Purpose |
+|---|---|
+| `cricket-live-api` Lambda | the whole backend (`backend/index.mjs`) |
+| HTTP API | `GET /ch/{code}/feed` (overlay), `GET/PUT /ch/{code}/doc/{path}` (scorer), `POST /playhq/{secret}` (PlayHQ), `GET /health` |
+| `cricket-live` DynamoDB table | channel documents + raw PlayHQ events (kept 30 days) |
+| `cricket-live-artifacts-…` S3 bucket | private; holds the packaged Lambda code for deploys |
+
+### Channel documents (`/ch/<code>/…`)
+
+| Doc | Written by | Contents |
 |---|---|---|
 | `live` | scorer **or** PlayHQ receiver | `{ setup, tick: { state, event } }`: the only thing the overlay draws from |
-| `cmd` | scorer | `{ id, kind }`: show batting / bowling / worm / clear / hide / show |
+| `cmd` | scorer | `{ id, kind }`: batting / bowling / worm / break / clear / hide / show |
 | `prefs` | scorer | `{ autoCards, autoHype }` |
-| `scorer` | scorer | `{ setup, actions, seq }` so another device can carry on the same match |
-| `library` | scorer | saved teams |
+| `scorer` | scorer | `{ setup, actions, seq }` so another device can carry on (needs key to read) |
+| `library` | scorer | saved teams (needs key to read) |
 
 - `setup` = match title, overs, wide and no-ball runs, teams (name, short code, colours, logo, players, keeper).
-- `state` = `toState()` in `engine.js`: innings with batters, bowlers, extras, fall of wickets, worm points, this over.
-- `event` = `{ seq, kind: 'ball'|'undo'|'other', boundary, wicket, overComplete, inningsComplete, batter, credited }`. The overlay plays hype screens only when `seq` goes up by exactly one with `kind: 'ball'`.
+- `state` = `toState()` in `engine.js`.
+- `event` = `{ seq, kind: 'ball'|'undo'|'other', boundary, wicket, overComplete, inningsComplete, batter, credited }`.
 
-**PlayHQ plan:** a small function (e.g. AWS Lambda with a function URL) receives PlayHQ's live-game webhooks, maps the scorecard and score events into the same `setup` / `state` / `event` shape, and writes `/ch/<code>/live`. The overlay and the PRISM link don't change.
+**Security:** the first scorer key that writes to a channel claims it; after that only that key can write. The overlay link (channel code only) is read-only. The "score on another device" link includes the key, so keep it private.
 
-## One-time Firebase setup (about 5 minutes)
+**PlayHQ plan:** PlayHQ's webhooks go to `POST /playhq/<secret>`. Raw events are already stored (`pk = playhq#raw`) so we can see the real payloads. Next step: link a PlayHQ game ID to a channel, convert their scorecard and score events into the same `setup` / `state` / `event` shape, and write `/ch/<code>/live`. The overlay and the PRISM link don't change. The webhook URL is in the Lambda's `PLAYHQ_SECRET` environment variable:
+`aws --profile songbook lambda get-function-configuration --function-name cricket-live-api --query Environment.Variables.PLAYHQ_SECRET`
 
-1. Go to <https://console.firebase.google.com>, sign in with Google, **Create a project** (any name, Analytics off).
-2. **Build → Realtime Database → Create database.** Pick **Singapore (asia-southeast1)**, start in **locked mode**.
-3. **Rules** tab: replace everything with the rules below, then **Publish**.
-   ```json
-   {
-     "rules": {
-       "ch": { "$ch": { ".read": true, ".write": true } }
-     }
-   }
-   ```
-   Only someone who knows a channel code can read or change that channel, and nobody can list the channels.
-4. Copy the database URL from the **Data** tab (`https://…-default-rtdb.asia-southeast1.firebasedatabase.app`).
-5. In `score.html`, tap the status pill or ☰ → **Settings**, paste the URL, **Save & test**.
-6. Copy the **Overlay link** from Settings into PRISM's Web widget. It stays the same every week.
+## Deploying backend changes
+
+```bash
+infra/deploy.sh
+```
+
+It refuses to run unless the `songbook` profile is account 730335344374, packages `backend/`, deploys the stack and rewrites `backend.js` with the API address. Then commit and push to update GitHub Pages.
