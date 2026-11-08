@@ -76,6 +76,8 @@
   .toggle input::after { content:''; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:left .2s; }
   .toggle input:checked { background:var(--ok); } .toggle input:checked::after { left:23px; }
   .remote .opts { margin-bottom:8px; }
+  .opt.brk { width:100%; margin-bottom:8px; background:#e8f0fe; border-color:#b9d0fb; color:var(--blue); }
+  .opt.brk.on { background:var(--blue); border-color:var(--blue); color:#fff; }
   .sb { border-radius:16px; padding:16px; color:#fff; margin-bottom:12px; background:linear-gradient(135deg,var(--tp),var(--navy) 85%); position:relative; overflow:hidden; }
   .sb-top { display:flex; align-items:center; gap:12px; }
   .sb-team { font:800 26px var(--num); letter-spacing:.5px; flex:1; line-height:1.1; }
@@ -251,7 +253,15 @@ function describe(a) {
 let prefs = { autoCards: true, autoHype: true, ...LS.get('cc.prefs', {}) };
 function setPref(k, v) { prefs[k] = v; LS.set('cc.prefs', prefs); sync.put('prefs', prefs); toast(`${k === 'autoCards' ? 'Auto cards' : 'Auto hype screens'} ${v ? 'on' : 'off'}`); }
 app.addEventListener('change', e => { const p = e.target.dataset.pref; if (p) setPref(p, e.target.checked); });
-function sendCmd(kind, label) { sync.put('cmd', { id: rid(6) + Date.now(), kind }); toast(label + (sync.mode === 'local' ? ' (this device only)' : '')); }
+let breakOn = false;   // whether we've put the overlay into break mode
+function toggleBreak() {
+  breakOn = !breakOn;
+  sendCmd(breakOn ? 'break' : 'clear', breakOn ? 'Break mode on' : 'Break over');
+  renderScore();
+}
+function sendCmd(kind, label) {
+  if (kind !== 'break' && breakOn) { breakOn = false; setTimeout(renderScore); }
+  sync.put('cmd', { id: rid(6) + Date.now(), kind }); toast(label + (sync.mode === 'local' ? ' (this device only)' : '')); }
 
 /* ═══════════════ links ═══════════════ */
 function linkTo(page) {
@@ -563,6 +573,7 @@ function renderScore() {
         <button class="k util span2" data-act="more">More…</button>
       </section>
       <section class="card remote"><h3>Show on stream</h3>
+        <button class="opt brk ${breakOn ? 'on' : ''}" data-act="break">${breakOn ? '■ End break – back to score bar' : '☕ Drinks / break<small>batting → bowling → worm, 10s each, on repeat</small>'}</button>
         <div class="opts">
           <button class="opt" data-cmd="batting">Batting card</button><button class="opt" data-cmd="bowling">Bowling card</button>
           <button class="opt" data-cmd="worm">Score worm</button><button class="opt" data-cmd="clear">Back to score bar</button>
@@ -607,7 +618,7 @@ app.addEventListener('click', e => {
   if (d.x) return extraSheet(d.x);
   if (d.cmd) return sendCmd(d.cmd, b.textContent);
   ({
-    wicket: wicketSheet, undo, more: moreSheet, openers: openersSheet, bowler: () => bowlerSheet(),
+    wicket: wicketSheet, undo, more: moreSheet, break: toggleBreak, openers: openersSheet, bowler: () => bowlerSheet(),
     swap: () => commit({ t: 'swap' }),
     newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
   })[d.act]?.();

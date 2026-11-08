@@ -481,10 +481,27 @@ function startLive() {
     seenCmd = id; handleCmd(c.kind);
   });
 }
+/* Break mode (drinks, lunch…): banner, then batting → bowling → worm on a loop until stopped. */
+let breakMode = false;
+async function runBreak() {
+  breakMode = true; director.clear();
+  const inn = m.inn, bat = m.team(inn.bat);
+  director.push({ ms: 6000, render: () => bannerHTML(bat, `${bat.short} ${m.inn.runs}-${m.inn.wkts} (${oversStr(m.inn.legal)})`, 'DRINKS BREAK', statusList(m)[0]) });
+  const ms = T.breakCard || 10000;
+  while (breakMode) {
+    const tok = director.token;
+    director.push(cards.batting(m.current, ms), cards.bowling(m.current, ms), cards.worm(ms));
+    await director.idle();
+    if (tok !== director.token) break;   // something cleared the screen (Back to score bar, a manual card…)
+  }
+  breakMode = false;
+}
 function handleCmd(kind) {
+  if (kind !== 'break') breakMode = false;
   if (kind === 'hide') { hiddenByCmd = true; director.clear(); return; }
   if (kind === 'show') { hiddenByCmd = false; if (!director.running) setChrome(true); return; }
   if (!hasGame) return;
+  if (kind === 'break') { if (!breakMode) runBreak(); return; }
   // Manually requested cards replace whatever is showing and stay up until "Back to score bar" (max 1 min)
   const hold = T.manualHold || 60000;
   const card = { batting: () => cards.batting(m.current, hold), bowling: () => cards.bowling(m.current, hold), worm: () => cards.worm(hold) }[kind];
