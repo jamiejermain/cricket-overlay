@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cricket Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,500;0,600;0,700;0,800;0,900;1,800;1,900&display=swap" rel="stylesheet">
+<style>
+  :root { --navy:#141a4a; --navy2:#232a6b; --ink:#10142e; --paper:#eef1f8; }
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; background:transparent; }
+  body { font-family:'Barlow Condensed','Arial Narrow',sans-serif; font-variant-numeric:tabular-nums; }
+  #stage { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; overflow:hidden; opacity:0; transition:opacity .5s; }
+  #stage.ready { opacity:1; }
+
+  /* ── LIVE tag ── */
+  .live { position:absolute; left:56px; top:44px; height:48px; display:flex; align-items:center; z-index:5; color:#fff; font-size:26px; font-weight:800;
+    letter-spacing:2px; filter:drop-shadow(0 6px 14px rgba(0,0,0,.45)); transition:transform .5s cubic-bezier(.2,.8,.2,1), opacity .4s; }
+  .live.hidden { transform:translateY(-120px); opacity:0; }
+  .live .tag { height:100%; display:flex; align-items:center; gap:10px; padding:0 18px; background:#d32f2f; }
+  .live .dot { width:13px; height:13px; border-radius:50%; background:#fff; animation:pulse 1.6s infinite; }
+  .live .lt { height:100%; display:flex; align-items:center; padding:0 22px; background:linear-gradient(180deg,var(--navy2),var(--navy)); font-weight:700; letter-spacing:1.5px; }
+  .live .vs { height:100%; display:flex; align-items:center; gap:10px; padding:0 20px; background:linear-gradient(180deg,#f6f7fb,#d7dce9); color:var(--ink); }
+  .live .vs i { font-style:normal; font-weight:600; color:#5a6286; font-size:20px; }
+  @keyframes pulse { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:.35; transform:scale(.75)} }
+
+  /* ── demo field background (only with ?demo) ── */
+  body.field #stage { background:repeating-linear-gradient(90deg,#3d8a38 0 160px,#46a042 160px 320px); }
+  body.field #stage::before { content:''; position:absolute; inset:0;
+    background:linear-gradient(#cdb886,#bfa572); clip-path:polygon(46.5% 12%,53.5% 12%,58% 100%,42% 100%); }
+  body.field #stage::after { content:''; position:absolute; inset:0;
+    background:radial-gradient(ellipse at 50% 40%,transparent 50%,rgba(0,0,0,.35)); }
+
+  /* ── score bar ── */
+  .bug { position:absolute; left:70px; right:70px; bottom:46px; height:100px; display:flex; z-index:5;
+    filter:drop-shadow(0 10px 20px rgba(0,0,0,.5)); transition:transform .55s cubic-bezier(.2,.8,.2,1), opacity .4s; }
+  .bug.hidden { transform:translateY(190px); opacity:0; }
+  .logo-panel { flex:0 0 190px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
+    background:linear-gradient(135deg,var(--p),var(--pd)); }
+  .logo-panel::after { content:''; position:absolute; top:0; bottom:0; left:-90px; width:60px; transform:skewX(-20deg);
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent); animation:shine 10s 3s infinite; }
+  .logo-panel.right::after { animation-delay:3.4s; }
+  @keyframes shine { 0%{left:-90px} 10%,100%{left:260px} }
+  .bug.entering > * { animation:segIn .5s cubic-bezier(.2,.9,.2,1) both; }
+  .bug.entering > :nth-child(2) { animation-delay:.06s; } .bug.entering > :nth-child(3) { animation-delay:.12s; }
+  .bug.entering > :nth-child(4) { animation-delay:.18s; } .bug.entering > :nth-child(5) { animation-delay:.24s; }
+  @keyframes segIn { from { opacity:0; transform:translateY(40px); } }
+  .st { animation:stIn .45s ease-out; }
+  @keyframes stIn { from { opacity:0; transform:translateY(12px); } }
+  .logo-panel.left { clip-path:polygon(0 0,100% 0,90% 100%,0 100%); margin-right:-14px; }
+  .logo-panel.right { clip-path:polygon(10% 0,100% 0,100% 100%,0 100%); margin-left:-14px; }
+  .seg { display:flex; flex-direction:column; min-width:0; }
+  .r1 { height:56px; display:flex; align-items:center; padding:0 22px; color:#fff; font-size:38px; font-weight:700;
+    background:linear-gradient(180deg,var(--navy2),var(--navy)); border-right:2px solid rgba(255,255,255,.12); letter-spacing:.5px; }
+  .r2 { height:44px; display:flex; align-items:center; padding:0 22px; color:var(--ink); font-size:27px; font-weight:700;
+    background:linear-gradient(180deg,#f6f7fb,#d7dce9); border-right:1px solid #b6bdd1; }
+  .team { flex:0 0 400px; }
+  .team .r1 { padding:0; }
+  .team .code { padding:0 20px 0 30px; font-weight:800; }
+  .team .score { flex:1; height:100%; display:flex; align-items:center; justify-content:center; font-size:46px; font-weight:800;
+    background:linear-gradient(180deg,var(--p),var(--pd)); color:var(--pt); }
+  .team .score.flash { animation:flash .9s; }
+  .team .ovs { padding:0 18px; font-size:28px; color:#aeb6e6; min-width:62px; text-align:center; }
+  .team .r2 { background:#0b0e2c; color:#fff; justify-content:center; letter-spacing:1px; padding:0 10px; white-space:nowrap; }
+  .team .r2.long { font-size:21px; }
+  .bat { flex:1 1 0; }
+  .bat .nm { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .strk { color:var(--a); font-size:24px; width:30px; flex:0 0 30px; }
+  .strk.off { visibility:hidden; }
+  .rn { font-size:42px; font-weight:800; min-width:56px; text-align:right; }
+  .bl { font-size:26px; color:#8fb3ff; min-width:42px; margin-left:10px; }
+  .lbl { font-size:22px; letter-spacing:1px; color:#4a5175; white-space:nowrap; }
+  .chips { display:flex; gap:6px; margin-left:14px; overflow:hidden; }
+  .chip { min-width:32px; height:32px; padding:0 5px; box-sizing:border-box; border-radius:6px; display:flex; align-items:center; justify-content:center;
+    font-size:22px; font-weight:800; background:#fff; color:var(--ink); border:2px solid #c3c9d9; }
+  .chip.dot { background:#2b3159; color:#aab2d8; border-color:#2b3159; }
+  .chip.four { background:#1e88e5; color:#fff; border-color:#1e88e5; }
+  .chip.six { background:linear-gradient(#ffe082,#ff9800); color:var(--ink); border-color:#ff9800; }
+  .chip.wkt { background:#e53935; color:#fff; border-color:#e53935; }
+  .chip.extra { background:#ffe7a3; color:#6d4c00; border-color:#f3c64a; font-size:18px; }
+  .chip.new { animation:pop .5s cubic-bezier(.2,1.6,.4,1); }
+  .bwl .nm { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .fig { font-size:30px; font-weight:800; }
+  .bov { font-size:23px; color:#5a6286; margin-left:12px; min-width:46px; }
+  @keyframes pop { from { transform:scale(0); } to { transform:scale(1); } }
+  @keyframes flash { 0%{filter:brightness(2.2)} 100%{filter:brightness(1)} }
+
+  /* ── full-screen takeovers ── */
+  #layer { position:absolute; inset:0; z-index:10; pointer-events:none; }
+  #layer.out { animation:out .45s forwards; }
+  @keyframes out { to { opacity:0; transform:scale(1.02); } }
+
+  .hype { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .hype .flash { position:absolute; inset:0; background:radial-gradient(circle,rgba(255,255,255,.7),transparent 60%); opacity:0; animation:fl .7s ease-out; }
+  @keyframes fl { 0%{opacity:1} 100%{opacity:0} }
+  .hype .band { position:absolute; left:-10%; right:-10%; top:50%; height:360px; margin-top:-180px;
+    background:linear-gradient(90deg,var(--pd),var(--p) 50%,var(--pd)); border-top:12px solid var(--a); border-bottom:12px solid var(--a);
+    transform:skewY(-5deg) scaleX(0); transform-origin:left; animation:bandIn .45s cubic-bezier(.2,.9,.2,1) forwards;
+    box-shadow:0 0 90px rgba(0,0,0,.55); overflow:hidden; }
+  .hype .streaks { position:absolute; inset:0; background:repeating-linear-gradient(105deg,transparent 0 70px,rgba(255,255,255,.09) 70px 76px);
+    animation:streak 1.2s linear infinite; }
+  @keyframes bandIn { to { transform:skewY(-5deg) scaleX(1); } }
+  @keyframes streak { from{background-position:0 0} to{background-position:300px 0} }
+  .hype .kicker { position:absolute; top:calc(50% - 228px); font-size:44px; font-weight:800; letter-spacing:22px; color:#fff;
+    text-shadow:0 3px 10px rgba(0,0,0,.6); opacity:0; animation:fadeUp .4s .3s forwards; padding-left:22px; }
+  .hype .big { position:relative; font-size:290px; font-weight:900; font-style:italic; line-height:.85; letter-spacing:4px; color:#fff;
+    filter:drop-shadow(0 0 28px var(--a)) drop-shadow(0 10px 0 rgba(0,0,0,.35));
+    transform:scale(2.6); opacity:0; animation:slam .5s .25s cubic-bezier(.2,1.3,.4,1) forwards, shake .35s .75s; }
+  .hype.six .big { background:linear-gradient(#fffbe0,#ffd54f 45%,#ff8f00); -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 30px rgba(255,180,0,.9)) drop-shadow(0 10px 0 rgba(0,0,0,.35)); }
+  .hype .sub { position:absolute; top:calc(50% + 158px); font-size:54px; font-weight:800; color:#fff; background:#0b0e2c;
+    padding:6px 40px; transform:skewX(-10deg); opacity:0; animation:fadeUp .4s .7s forwards; white-space:nowrap; letter-spacing:1px;
+    border-left:10px solid var(--a); }
+  .hype .sub span { color:var(--a); margin-left:16px; }
+  .hype .sub em { font-style:normal; font-weight:600; color:#c9cff0; margin-left:16px; }
+  .hype .pt { position:absolute; left:50%; top:50%; width:var(--s); height:var(--s); background:var(--a); border-radius:2px; opacity:0;
+    animation:burst 1.4s var(--d) ease-out forwards; }
+  .hype.six .pt { background:#ffd54f; }
+  .hype .note { position:absolute; top:calc(50% + 252px); font-size:30px; font-weight:800; letter-spacing:6px; color:#fff;
+    text-shadow:0 2px 10px rgba(0,0,0,.8); opacity:0; animation:fadeUp .4s 1.05s forwards; }
+  .hype.mile .band { background:linear-gradient(90deg,#3a2400,#b8860b 50%,#3a2400); border-color:#ffe082; }
+  .hype.wkt .band { background:linear-gradient(90deg,#5e0000,#d32f2f 50%,#5e0000); border-color:#fff; }
+  .hype.wkt .big { filter:drop-shadow(0 0 28px rgba(255,80,80,.9)) drop-shadow(0 10px 0 rgba(0,0,0,.35)); }
+  .hype.banner .big { font-size:180px; }
+  .hype.banner .sub { top:calc(50% + 140px); }
+  @keyframes slam { to { transform:scale(1); opacity:1; } }
+  @keyframes shake { 0%,100%{translate:0 0} 25%{translate:-12px 6px} 50%{translate:10px -6px} 75%{translate:-6px 4px} }
+  @keyframes fadeUp { from{opacity:0; translate:0 30px} to{opacity:1; translate:0 0} }
+  @keyframes burst { 0%{opacity:1; transform:translate(-50%,-50%) scale(.3) rotate(0)}
+    100%{opacity:0; transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1) rotate(540deg)} }
+
+  /* ── cards (batting / bowling / worm) ── */
+  .card { position:absolute; left:50%; top:80px; width:1380px; margin-left:-690px; animation:cardIn .55s cubic-bezier(.2,.9,.2,1) both; }
+  @keyframes cardIn { from { opacity:0; transform:translateY(40px) scale(.97); } }
+  .crest { position:absolute; left:0; top:-12px; width:150px; height:150px; border-radius:50%; z-index:2;
+    background:radial-gradient(circle at 35% 30%,#2e3680,#0b0e2c); border:5px solid var(--a);
+    display:flex; align-items:center; justify-content:center; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  .card-head { margin-left:70px; height:88px; display:flex; align-items:center; padding-left:110px; color:#fff;
+    font-size:64px; font-weight:800; letter-spacing:2px; background:linear-gradient(90deg,#0b0e2c,var(--navy2));
+    border:3px solid rgba(255,255,255,.25); border-bottom:none; clip-path:polygon(0 0,97% 0,100% 100%,0 100%); }
+  .card-sub { margin-left:70px; height:40px; display:flex; align-items:center; padding-left:110px; font-size:24px; font-weight:700;
+    letter-spacing:3px; background:linear-gradient(90deg,var(--p),var(--pd)); color:var(--pt); }
+  .card-body { background:rgba(9,12,38,.93); border:3px solid rgba(255,255,255,.16); border-top:none; padding:8px 0; }
+  .row { display:grid; grid-template-columns:var(--cols); align-items:center; height:50px; padding:0 34px; color:#e9ecff;
+    font-size:30px; font-weight:600; animation:rowIn .35s both; }
+  .row:nth-child(even) { background:rgba(255,255,255,.045); }
+  .row.head { height:38px; font-size:21px; color:#8f98cf; letter-spacing:2px; font-weight:700; background:none; }
+  .row.hl { background:linear-gradient(90deg,var(--p),var(--pd)); color:var(--pt); font-weight:800; }
+  .row.dim { color:rgba(233,236,255,.4); }
+  .row .num { text-align:right; }
+  .row .how { color:#b9c0ea; font-weight:500; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; padding-right:12px; }
+  .row.hl .how { color:inherit; }
+  .row .nm { overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  @keyframes rowIn { from { opacity:0; transform:translateX(-20px); } }
+  .fow { display:flex; align-items:stretch; margin:10px 34px 4px; border:2px solid rgba(255,255,255,.14); }
+  .fow .fl { padding:0 18px; display:flex; align-items:center; font-size:22px; font-weight:800; letter-spacing:2px; color:#0b0e2c; background:var(--a); }
+  .fow .fc { flex:1; display:flex; flex-direction:column; align-items:center; padding:4px 0; border-left:1px solid rgba(255,255,255,.1); color:#e9ecff; }
+  .fow .fc span { font-size:18px; color:#8f98cf; }
+  .fow .fc b { font-size:28px; }
+  .card-foot { display:flex; align-items:center; gap:30px; height:70px; padding:0 0 0 34px; font-size:28px; font-weight:700; color:var(--ink);
+    background:linear-gradient(180deg,#eef1f8,#c8cee0); }
+  .card-foot i { font-style:normal; font-weight:500; color:#4a5175; font-size:24px; }
+  .card-foot .tot { margin-left:auto; display:flex; align-items:center; gap:24px; height:100%; }
+  .card-foot .tot b { height:100%; display:flex; align-items:center; padding:0 34px; font-size:50px; color:#fff; background:var(--navy); }
+
+  .worm svg { display:block; margin:0 auto; }
+  .worm .gl { stroke:rgba(255,255,255,.1); stroke-width:2; }
+  .worm .ax { fill:#9aa3d6; font-size:24px; font-weight:700; font-family:'Barlow Condensed',sans-serif; }
+  .worm .draw { stroke-dasharray:1; stroke-dashoffset:1; animation:draw 1.8s .3s ease-out forwards; }
+  .worm .dotw { opacity:0; animation:fadeIn .3s forwards; }
+  @keyframes draw { to { stroke-dashoffset:0; } }
+  @keyframes fadeIn { to { opacity:1; } }
+  .worm .card-foot { flex-direction:column; align-items:stretch; height:auto; gap:0; padding:0; background:none; }
+  .tbars { display:flex; gap:12px; padding:12px 0 0; }
+  .tb { flex:1; display:flex; align-items:center; height:58px; padding:0 0 0 26px; color:var(--pt); font-size:32px; font-weight:800;
+    background:linear-gradient(90deg,var(--p),var(--pd)); clip-path:polygon(0 0,100% 0,97% 100%,0 100%); }
+  .tb .rpo { margin-left:auto; font-size:24px; font-weight:700; opacity:.85; margin-right:18px; }
+  .tb .ts { background:#fff; color:var(--ink); height:100%; display:flex; align-items:center; padding:0 40px 0 22px; font-size:38px; }
+  .wbanner { margin-top:10px; height:56px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:34px; font-weight:800;
+    letter-spacing:1px; background:linear-gradient(180deg,#2a2f55,#0b0e2c); border:2px solid rgba(255,255,255,.18); }
+
+  /* ── demo controls ── */
+  #ctl { position:fixed; right:12px; top:12px; width:230px; z-index:100; background:rgba(12,14,30,.88); color:#fff; border-radius:10px;
+    padding:12px; font:14px/1.3 system-ui,sans-serif; box-shadow:0 6px 24px rgba(0,0,0,.4); }
+  #ctl h3 { margin:0 0 8px; font-size:13px; letter-spacing:1px; text-transform:uppercase; color:#9aa3d6; }
+  #ctl .g { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
+  #ctl button { font:600 13px system-ui,sans-serif; padding:7px 4px; border:0; border-radius:6px; background:#2b3159; color:#fff; cursor:pointer; }
+  #ctl button:hover { background:#3b4380; }
+  #ctl button.w { grid-column:span 2; }
+  #ctl label { display:block; margin:6px 0; color:#c9cff0; }
+  #ctl input[type=range] { width:100%; }
+  #ctl .hide { position:absolute; right:8px; top:6px; background:none; padding:2px 6px; color:#9aa3d6; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="live" id="live"></div>
+  <div class="bug" id="bug"></div>
+  <div id="layer"></div>
+</div>
+
+<script src="config.js"></script>
+<script>
+/* ═══════════════ helpers ═══════════════ */
+const CFG = window.OVERLAY_CONFIG;
+const params = new URLSearchParams(location.search);
+const DEMO = params.has('demo');
+const other = k => (k === 'home' ? 'away' : 'home');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const oversStr = b => `${Math.floor(b / 6)}.${b % 6}`;
+const surname = n => n.trim().split(/\s+/).slice(-1)[0].toUpperCase();
+const shortName = n => { const p = n.trim().split(/\s+/); return p.length > 1 ? `${p[0][0]}. ${p.slice(1).join(' ')}` : n; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function hexRgb(h) { h = h.replace('#', ''); if (h.length === 3) h = [...h].map(c => c + c).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function shade(h, amt) { const f = v => Math.round(amt < 0 ? v * (1 + amt) : v + (255 - v) * amt); return `rgb(${hexRgb(h).map(f).join(',')})`; }
+function textOn(h) { const [r, g, b] = hexRgb(h).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.42 ? '#10142e' : '#ffffff'; }
+const teamVars = t => `--p:${t.primary};--pd:${shade(t.primary, -0.45)};--pt:${textOn(t.primary)};--a:${t.accent};`;
+function badge(t, size) {
+  if (t.logo) return `<img src="${esc(t.logo)}" alt="" style="width:${size}px;height:${size}px;object-fit:contain">`;
+  return `<svg viewBox="0 0 100 110" width="${size}" height="${size * 1.1}" style="filter:drop-shadow(0 4px 6px rgba(0,0,0,.4))">
+    <path d="M50 4 L94 18 V52 C94 80 74 98 50 106 C26 98 6 80 6 52 V18 Z" fill="${t.primary}" stroke="${t.accent}" stroke-width="6"/>
+    <path d="M50 14 L84 25 V52 C84 74 68 88 50 95 Z" fill="rgba(255,255,255,.12)"/>
+    <text x="50" y="68" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="34" fill="${textOn(t.primary)}">${esc(t.short.slice(0, 3))}</text></svg>`;
+}
+
+/* ═══════════════ match model ═══════════════
+   All the overlay graphics read from this one plain-data model.
+   Today the simulator below drives it; later a PlayHQ feed will. */
+class Match {
+  constructor(cfg) { this.cfg = cfg; this.reset(); }
+  reset() { this.innings = [this.newInnings(this.cfg.battingFirst || 'home')]; this.current = 0; this.status = 'live'; this.result = ''; this.winner = null; }
+  newInnings(batKey) {
+    const batters = this.cfg.teams[batKey].players.map((name, i) => ({ id: i, name, runs: 0, balls: 0, fours: 0, sixes: 0, status: i < 2 ? 'batting' : 'yet', how: '', bow: '' }));
+    return { bat: batKey, bowl: other(batKey), runs: 0, wkts: 0, legal: 0, extras: { wd: 0, nb: 0, b: 0, lb: 0 }, batters, bowlers: [],
+      striker: 0, nonStriker: 1, next: 2, bowler: -1, bowlHist: [], thisOver: [], needBowler: true, overStartRuns: 0,
+      worm: [{ b: 0, r: 0 }], fow: [], complete: false };
+  }
+  get inn() { return this.innings[this.current]; }
+  get target() { return this.innings[0].runs + 1; }
+  get maxWkts() { return Math.min(this.cfg.match.playersPerSide, this.inn.batters.length) - 1; }
+  team(k) { return this.cfg.teams[k]; }
+  setBowler(name) {
+    const inn = this.inn; let i = inn.bowlers.findIndex(b => b.name === name);
+    if (i < 0) { inn.bowlers.push({ name, balls: 0, maidens: 0, runs: 0, wkts: 0, wd: 0, nb: 0 }); i = inn.bowlers.length - 1; }
+    inn.bowler = i; inn.bowlHist.push(name); inn.overStartRuns = inn.bowlers[i].runs; inn.thisOver = []; inn.needBowler = false;
+  }
+  startSecondInnings() { this.innings.push(this.newInnings(other(this.innings[0].bat))); this.current = 1; this.status = 'live'; }
+
+  // o = { runs, extra: null|'wd'|'nb'|'b'|'lb', wicket: null|{type, fielder} }
+  bowl(o) {
+    const inn = this.inn, bw = inn.bowlers[inn.bowler], st = inn.batters[inn.striker];
+    const runs = o.runs || 0, ex = o.extra || null, legal = ex !== 'wd' && ex !== 'nb';
+    let total, chip;
+    if (ex === 'wd') { total = 1 + runs; inn.extras.wd += total; bw.runs += total; bw.wd++; chip = { t: runs ? `${runs + 1}wd` : 'wd', k: 'extra' }; }
+    else if (ex === 'nb') { total = 1 + runs; inn.extras.nb++; inn.extras.b += 0; st.runs += runs; st.balls++; bw.runs += total; bw.nb++; chip = { t: runs ? `${runs}nb` : 'nb', k: 'extra' }; }
+    else if (ex === 'b' || ex === 'lb') { total = runs; inn.extras[ex] += runs; st.balls++; chip = { t: `${runs}${ex}`, k: 'extra' }; }
+    else { total = runs; st.runs += runs; st.balls++; bw.runs += runs; chip = { t: runs === 0 ? '•' : String(runs), k: ['dot', 'run', 'run', 'run', 'four', 'run', 'six'][runs] || 'run' }; }
+    const boundary = (!ex || ex === 'nb') && (runs === 4 || runs === 6) ? runs : null;
+    if (boundary === 4) st.fours++; if (boundary === 6) st.sixes++;
+    if (legal) { inn.legal++; bw.balls++; }
+    inn.runs += total;
+
+    let wicket = null, allOut = false;
+    if (o.wicket) {
+      const w = o.wicket, bs = shortName(bw.name), f = w.fielder ? shortName(w.fielder) : '';
+      st.status = 'out';
+      if (w.type === 'bowled') { st.how = ''; st.bow = `b ${bs}`; }
+      else if (w.type === 'caught') { const cb = w.fielder === bw.name; st.how = cb ? '' : `c ${f}`; st.bow = cb ? `c & b ${bs}` : `b ${bs}`; }
+      else if (w.type === 'lbw') { st.how = 'lbw'; st.bow = `b ${bs}`; }
+      else if (w.type === 'stumped') { st.how = `st ${f}`; st.bow = `b ${bs}`; }
+      else { st.how = `run out (${f})`; st.bow = ''; }
+      if (w.type !== 'run out') bw.wkts++;
+      inn.wkts++; inn.fow.push({ w: inn.wkts, r: inn.runs, b: inn.legal, name: st.name });
+      chip = { t: 'W', k: 'wkt' };
+      wicket = { type: w.type, batter: { ...st }, text: [st.how, st.bow].filter(Boolean).join(' ') };
+      if (inn.wkts >= this.maxWkts || inn.next >= inn.batters.length) allOut = true;
+      else { inn.batters[inn.next].status = 'batting'; inn.striker = inn.next++; }
+    } else {
+      const ran = ex === 'wd' ? runs : boundary ? 0 : runs;
+      if (ran % 2 === 1) [inn.striker, inn.nonStriker] = [inn.nonStriker, inn.striker];
+    }
+    inn.thisOver.push(chip);
+    inn.worm.push({ b: inn.legal, r: inn.runs });
+
+    const overComplete = legal && inn.legal % 6 === 0;
+    if (overComplete) {
+      if (bw.runs - inn.overStartRuns === 0) bw.maidens++;
+      [inn.striker, inn.nonStriker] = [inn.nonStriker, inn.striker];
+      inn.needBowler = true;
+    }
+    const inningsComplete = allOut || inn.legal >= this.cfg.match.oversPerInnings * 6 || (this.current === 1 && inn.runs >= this.target);
+    if (inningsComplete) {
+      inn.complete = true;
+      if (this.current === 0) this.status = 'break'; else { this.status = 'complete'; this.computeResult(); }
+    }
+    const credited = ex === 'wd' || ex === 'b' || ex === 'lb' ? 0 : runs;   // runs added to the batter's own score
+    return { runs: total, extra: ex, boundary, wicket, credited, batter: { ...st }, overComplete, inningsComplete };
+  }
+  computeResult() {
+    const a = this.innings[0], b = this.innings[1], A = this.team(a.bat), B = this.team(b.bat);
+    if (b.runs >= this.target) { const w = this.maxWkts - b.wkts; this.winner = b.bat; this.result = `${B.name.toUpperCase()} WIN BY ${w} WICKET${w === 1 ? '' : 'S'}`; }
+    else if (b.runs === a.runs) { this.winner = null; this.result = 'MATCH TIED'; }
+    else { const r = a.runs - b.runs; this.winner = a.bat; this.result = `${A.name.toUpperCase()} WIN BY ${r} RUN${r === 1 ? '' : 'S'}`; }
+  }
+}
+
+// The status line rotates through these (first one is the main status).
+function statusList(m) {
+  const inn = m.inn;
+  if (m.status === 'complete') return [m.result];
+  if (m.status === 'break') return [`TARGET ${m.target}`, 'INNINGS BREAK'];
+  const f = inn.fow[inn.fow.length - 1], pr = inn.runs - (f ? f.r : 0), pb = inn.legal - (f ? f.b : 0);
+  const extra = inn.legal >= 6 ? [`P'SHIP ${pr} (${pb})`] : [];
+  if (m.current === 0) return ['1ST INNINGS', ...(inn.legal >= 6 ? [`RUN RATE ${(inn.runs / (inn.legal / 6)).toFixed(2)}`] : []), ...extra];
+  const need = m.target - inn.runs, balls = m.cfg.match.oversPerInnings * 6 - inn.legal;
+  return [`NEED ${need} OFF ${balls} BALL${balls === 1 ? '' : 'S'}`, `REQ. RATE ${(need / (balls / 6)).toFixed(2)}`, ...extra];
+}
+const ordinal = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) ? 0 : n % 10] || 'th');
+
+/* ═══════════════ score bar ═══════════════ */
+const m = new Match(CFG);
+const bugEl = document.getElementById('bug');
+let lastScore = '';
+function renderBug() {
+  const inn = m.inn, bat = m.team(inn.bat), bowl = m.team(inn.bowl);
+  const striker = inn.batters[inn.striker];
+  const pair = [inn.batters[inn.striker], inn.batters[inn.nonStriker]].filter(b => b && b.status === 'batting').sort((a, b) => a.id - b.id);
+  const bw = inn.bowlers[inn.bowler];
+  const score = `${inn.runs}-${inn.wkts}`;
+  const flash = lastScore && score !== lastScore ? 'flash' : ''; lastScore = score;
+  const batRow = b => b
+    ? `<span class="strk ${b === striker ? '' : 'off'}">▶</span><span class="nm">${esc(surname(b.name))}</span><span class="rn">${b.runs}</span><span class="bl">${b.balls}</span>`
+    : '<span class="nm"></span>';
+  const chips = inn.thisOver.map((c, i, a) => `<span class="chip ${c.k} ${i === a.length - 1 ? 'new' : ''}">${esc(c.t)}</span>`).join('');
+  const sl = statusList(m), st = sl[statusIdx % sl.length];
+  bugEl.innerHTML = `
+    <div class="logo-panel left" style="${teamVars(bat)}">${badge(bat, 74)}</div>
+    <div class="seg team" style="${teamVars(bat)}">
+      <div class="r1"><span class="code">${esc(bat.short)}</span><span class="score ${flash}">${score}</span><span class="ovs">${oversStr(inn.legal)}</span></div>
+      <div class="r2 ${st.length > 20 ? 'long' : ''}" id="status"><span class="st">${esc(st)}</span></div>
+    </div>
+    <div class="seg bat" style="${teamVars(bat)}">
+      <div class="r1">${batRow(pair[0])}</div>
+      <div class="r2"><span class="lbl">THIS OVER</span><span class="chips">${chips}</span></div>
+    </div>
+    <div class="seg bat bwl" style="${teamVars(bat)}">
+      <div class="r1">${batRow(pair[1])}</div>
+      <div class="r2">${bw ? `<span class="nm">${esc(surname(bw.name))}</span><span class="fig">${bw.wkts}-${bw.runs}</span><span class="bov">${oversStr(bw.balls)}</span>` : ''}</div>
+    </div>
+    <div class="logo-panel right" style="${teamVars(bowl)}">${badge(bowl, 74)}</div>`;
+  if (CFG.showLiveTag) liveEl.innerHTML = `<span class="tag"><span class="dot"></span>LIVE</span><span class="lt">${esc(CFG.match.title)}</span>
+    <span class="vs">${esc(m.team(m.innings[0].bat).short)}<i>v</i>${esc(m.team(m.innings[0].bowl).short)}</span>`;
+}
+let statusIdx = 0;
+function rotateStatus() {
+  statusIdx++;
+  const el = document.getElementById('status'); if (!el) return;
+  const sl = statusList(m), st = sl[statusIdx % sl.length];
+  if (sl.length < 2) return;
+  el.className = `r2 ${st.length > 20 ? 'long' : ''}`; el.innerHTML = `<span class="st">${esc(st)}</span>`;
+}
+const liveEl = document.getElementById('live');
+function setChrome(show) {
+  bugEl.classList.toggle('hidden', !show); liveEl.classList.toggle('hidden', !show || !CFG.showLiveTag);
+  if (show) { bugEl.classList.add('entering'); setTimeout(() => bugEl.classList.remove('entering'), 900); }
+}
+
+/* ═══════════════ cards ═══════════════ */
+function shell(t, title, sub, cols, body, foot, cls = '') {
+  return `<div class="card ${cls}" style="${teamVars(t)}--cols:${cols}">
+    <div class="crest">${badge(t, 104)}</div>
+    <div class="card-head">${esc(title)}</div>
+    <div class="card-sub">${esc(sub)}</div>
+    <div class="card-body">${body}</div>
+    <div class="card-foot">${foot}</div></div>`;
+}
+const delay = i => `style="animation-delay:${(0.2 + i * 0.045).toFixed(2)}s"`;
+function totalFoot(inn) {
+  return `<span class="tot"><span>OVERS ${oversStr(inn.legal)}</span><span>TOTAL</span><b>${inn.runs}-${inn.wkts}</b></span>`;
+}
+function battingCard(idx = m.current) {
+  const inn = m.innings[idx], t = m.team(inn.bat);
+  const rows = inn.batters.map((b, i) => {
+    const batting = b.status === 'batting', yet = b.status === 'yet';
+    const star = batting && i === inn.striker && !inn.complete ? '*' : '';
+    return `<div class="row ${batting ? 'hl' : yet ? 'dim' : ''}" ${delay(i)}>
+      <span class="nm">${esc(b.name.toUpperCase())}${star}</span>
+      <span class="how">${esc(batting ? 'not out' : b.how)}</span><span class="how">${esc(batting ? '' : b.bow)}</span>
+      <span class="num">${yet ? '' : b.runs}</span><span class="num">${yet ? '' : b.balls}</span>
+      <span class="num">${yet ? '' : b.fours}</span><span class="num">${yet ? '' : b.sixes}</span></div>`;
+  }).join('');
+  const ex = inn.extras, exT = ex.wd + ex.nb + ex.b + ex.lb;
+  return shell(t, t.name.toUpperCase(), `${CFG.match.title} · BATTING`, '360px 1fr 1fr 90px 90px 80px 80px',
+    `<div class="row head"><span>BATTER</span><span></span><span></span><span class="num">R</span><span class="num">B</span><span class="num">4s</span><span class="num">6s</span></div>${rows}`,
+    `<span>EXTRAS ${exT} <i>(wd ${ex.wd}, nb ${ex.nb}, b ${ex.b}, lb ${ex.lb})</i></span>${totalFoot(inn)}`);
+}
+function bowlingCard(idx = m.current) {
+  const inn = m.innings[idx], t = m.team(inn.bowl), bt = m.team(inn.bat);
+  const rows = inn.bowlers.map((b, i) => {
+    const econ = b.balls ? (b.runs / (b.balls / 6)).toFixed(2) : '–';
+    return `<div class="row ${i === inn.bowler && !inn.complete ? 'hl' : ''}" ${delay(i)}>
+      <span class="nm">${esc(b.name.toUpperCase())}</span><span class="num">${oversStr(b.balls)}</span><span class="num">${b.maidens}</span>
+      <span class="num">${b.runs}</span><span class="num"><b>${b.wkts}</b></span><span class="num">${econ}</span>
+      <span class="num">${b.wd}</span><span class="num">${b.nb}</span></div>`;
+  }).join('');
+  const maxW = Math.min(CFG.match.playersPerSide, inn.batters.length) - 1;
+  const fow = Array.from({ length: maxW }, (_, i) => { const f = inn.fow[i]; return `<div class="fc"><span>${i + 1}</span><b>${f ? f.r : '–'}</b></div>`; }).join('');
+  return shell(t, t.name.toUpperCase(), `BOWLING v ${bt.name.toUpperCase()} · ${CFG.match.title}`, '1fr 110px 110px 110px 110px 130px 90px 90px',
+    `<div class="row head"><span>BOWLER</span><span class="num">O</span><span class="num">M</span><span class="num">R</span><span class="num">W</span><span class="num">ECON</span><span class="num">WD</span><span class="num">NB</span></div>${rows}
+     <div class="fow"><span class="fl">FOW</span>${fow}</div>`,
+    `<span>${esc(bt.short)} BATTING</span>${totalFoot(inn)}`);
+}
+function niceStep(v) { const p = 10 ** Math.floor(Math.log10(v)); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; }
+function wormBanner() {
+  const inn = m.inn;
+  if (m.status === 'complete') return m.result;
+  if (m.status === 'break') return `${m.team(inn.bowl).name.toUpperCase()} NEED ${m.target} TO WIN`;
+  if (m.current === 0) return `1ST INNINGS · ${oversStr(inn.legal)} OVERS`;
+  const need = m.target - inn.runs, balls = CFG.match.oversPerInnings * 6 - inn.legal;
+  return `${m.team(inn.bat).name.toUpperCase()} NEED ${need} RUN${need === 1 ? '' : 'S'} OFF ${balls} BALL${balls === 1 ? '' : 'S'}`;
+}
+function wormCard() {
+  const W = 1320, H = 440, L = 80, R = 30, T = 24, B = 54, maxO = CFG.match.oversPerInnings;
+  const maxR = Math.max(30, ...m.innings.map(i => i.runs), m.current === 1 || m.status === 'break' ? m.target : 0);
+  const step = niceStep(maxR / 5), yMax = Math.ceil(maxR / step) * step;
+  const x = b => L + (b / 6) / maxO * (W - L - R), y = r => H - B - r / yMax * (H - T - B);
+  let g = '';
+  for (let r = 0; r <= yMax; r += step) g += `<line class="gl" x1="${L}" x2="${W - R}" y1="${y(r)}" y2="${y(r)}"/><text class="ax" x="${L - 14}" y="${y(r) + 8}" text-anchor="end">${r}</text>`;
+  const xs = maxO <= 20 ? 2 : 5;
+  for (let o = xs; o <= maxO; o += xs) g += `<text class="ax" x="${x(o * 6)}" y="${H - 14}" text-anchor="middle">${o}</text>`;
+  g += `<text class="ax" x="${L}" y="${H - 14}" text-anchor="middle">0</text>`;
+  if (m.innings.length > 1 || m.status === 'break') g += `<line x1="${L}" x2="${W - R}" y1="${y(m.target)}" y2="${y(m.target)}" stroke="#fff" stroke-opacity=".5" stroke-width="2" stroke-dasharray="10 8"/>
+    <text class="ax" x="${W - R}" y="${y(m.target) - 10}" text-anchor="end" fill="#fff">TARGET ${m.target}</text>`;
+  m.innings.forEach((inn, k) => {
+    const t = m.team(inn.bat);
+    const pts = inn.worm.map(p => `${x(p.b).toFixed(1)},${y(p.r).toFixed(1)}`).join(' ');
+    g += `<polyline class="draw" pathLength="1" points="${pts}" fill="none" stroke="${t.primary}" stroke-width="7" stroke-linejoin="round" stroke-linecap="round" style="animation-delay:${0.3 + k * 0.4}s"/>`;
+    inn.fow.forEach((f, i) => { g += `<circle class="dotw" cx="${x(f.b)}" cy="${y(f.r)}" r="10" fill="${t.primary}" stroke="#fff" stroke-width="3" style="animation-delay:${1.2 + k * 0.4 + i * 0.05}s"/>`; });
+    const lp = inn.worm[inn.worm.length - 1];
+    g += `<circle class="dotw" cx="${x(lp.b)}" cy="${y(lp.r)}" r="13" fill="#fff" stroke="${t.primary}" stroke-width="6" style="animation-delay:${2 + k * 0.4}s"/>`;
+  });
+  const bars = m.innings.map(inn => {
+    const t = m.team(inn.bat), rpo = inn.legal ? (inn.runs / (inn.legal / 6)).toFixed(2) : '0.00';
+    return `<div class="tb" style="${teamVars(t)}"><span>${esc(t.name.toUpperCase())}</span><span class="rpo">${rpo} RPO</span><span class="ts">${inn.runs}-${inn.wkts}</span></div>`;
+  }).join('');
+  const t = m.team(m.inn.bat);
+  return shell(t, 'SCORE WORM', `${CFG.match.title} · RUNS PER OVER`, '1fr',
+    `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`,
+    `<div class="tbars">${bars}</div><div class="wbanner">${esc(wormBanner())}</div>`, 'worm');
+}
+
+/* ═══════════════ hype screens ═══════════════ */
+function particles(n = 40) {
+  return Array.from({ length: n }, () => {
+    const a = Math.random() * Math.PI * 2, d = 300 + Math.random() * 750;
+    return `<i class="pt" style="--dx:${(Math.cos(a) * d).toFixed(0)}px;--dy:${(Math.sin(a) * d * 0.6).toFixed(0)}px;--d:${(0.25 + Math.random() * 0.3).toFixed(2)}s;--s:${(8 + Math.random() * 18).toFixed(0)}px"></i>`;
+  }).join('');
+}
+function hypeHTML(ev) {
+  const t = m.team(m.inn.bat), six = ev.boundary === 6, b = ev.batter;
+  const n = m.inn.batters.reduce((s, x) => s + (six ? x.sixes : x.fours), 0);
+  return `<div class="hype ${six ? 'six' : 'four'}" style="${teamVars(t)}"><div class="flash"></div><div class="band"><div class="streaks"></div></div>
+    ${particles()}<div class="kicker">${six ? 'MAXIMUM' : 'BOUNDARY'}</div><div class="big">${six ? 'SIX!' : 'FOUR!'}</div>
+    <div class="sub">${esc(b.name.toUpperCase())}<span>${b.runs}* (${b.balls})</span></div>
+    <div class="note">${ordinal(n).toUpperCase()} ${six ? 'SIX' : 'FOUR'} OF THE INNINGS</div></div>`;
+}
+function milestoneHTML(ev, ms) {
+  const t = m.team(m.inn.bat), b = ev.batter;
+  return `<div class="hype six mile" style="${teamVars(t)}"><div class="flash"></div><div class="band"><div class="streaks"></div></div>
+    ${particles(60)}<div class="kicker">MILESTONE</div><div class="big">${ms >= 100 ? 'CENTURY!' : 'FIFTY!'}</div>
+    <div class="sub">${esc(b.name.toUpperCase())}<span>${b.runs}* (${b.balls})</span></div>
+    <div class="note">${b.fours} FOUR${b.fours === 1 ? '' : 'S'} · ${b.sixes} SIX${b.sixes === 1 ? '' : 'ES'} · SR ${(b.runs / b.balls * 100).toFixed(0)}</div></div>`;
+}
+function wicketHTML(ev) {
+  const inn = m.inn, t = m.team(inn.bowl), b = ev.wicket.batter;
+  return `<div class="hype wkt" style="${teamVars(t)}"><div class="flash"></div><div class="band"><div class="streaks"></div></div>
+    <div class="kicker">${esc(m.team(inn.bat).short)} ${inn.runs}-${inn.wkts}</div><div class="big">WICKET!</div>
+    <div class="sub">${esc(b.name.toUpperCase())}<em>${esc(ev.wicket.text)}</em><span>${b.runs} (${b.balls})</span></div></div>`;
+}
+function bannerHTML(t, kicker, big, sub) {
+  return `<div class="hype banner" style="${teamVars(t)}"><div class="band"><div class="streaks"></div></div>
+    <div class="kicker">${esc(kicker)}</div><div class="big">${esc(big)}</div><div class="sub">${esc(sub)}</div></div>`;
+}
+
+/* ═══════════════ director: queues full-screen graphics one after another ═══════════════ */
+const layer = document.getElementById('layer');
+const director = {
+  q: [], running: false, waiters: [], token: 0,
+  push(...items) { this.q.push(...items); if (!this.running) this.run(); },
+  async run() {
+    this.running = true; setChrome(false);
+    const tok = this.token;
+    await sleep(350);
+    while (this.q.length && tok === this.token) {
+      const it = this.q.shift();
+      layer.className = ''; layer.innerHTML = it.render();
+      await sleep(Math.max(500, it.ms - 450)); if (tok !== this.token) return;
+      layer.className = 'out'; await sleep(450); if (tok !== this.token) return;
+      layer.innerHTML = ''; layer.className = '';
+    }
+    if (tok === this.token) this.finish();
+  },
+  finish() { this.running = false; setChrome(true); this.waiters.splice(0).forEach(r => r()); },
+  idle() { return this.running ? new Promise(r => this.waiters.push(r)) : Promise.resolve(); },
+  clear() { this.token++; this.q = []; layer.innerHTML = ''; layer.className = ''; this.finish(); },
+};
+const T = CFG.timings;
+const cards = {
+  batting: (idx, ms = T.battingCard) => ({ ms, render: () => battingCard(idx) }),
+  bowling: (idx, ms = T.bowlingCard) => ({ ms, render: () => bowlingCard(idx) }),
+  worm: (ms = T.worm) => ({ ms, render: wormCard }),
+};
+
+/* What happens after each ball. A PlayHQ feed will call this the same way. */
+let quiet = false;
+function onBall(ev) {
+  renderBug();
+  if (quiet) return;
+  const inn = m.inn, items = [];
+  if ((ev.boundary === 6 && CFG.hype.sixes) || (ev.boundary === 4 && CFG.hype.fours)) items.push({ ms: T.hype, render: () => hypeHTML(ev) });
+  if (CFG.hype.milestones && !ev.wicket) {
+    const prev = ev.batter.runs - ev.credited;
+    const ms = [100, 50].find(x => prev < x && ev.batter.runs >= x);
+    if (ms) items.push({ ms: T.hype + 1000, render: () => milestoneHTML(ev, ms) });
+  }
+  if (ev.wicket && CFG.hype.wickets) items.push({ ms: T.wicket, render: () => wicketHTML(ev) });
+  if (ev.inningsComplete) {
+    const bat = m.team(inn.bat);
+    if (m.status === 'break') items.push({ ms: 6000, render: () => bannerHTML(bat, `${bat.short} ${inn.runs}-${inn.wkts} (${oversStr(inn.legal)})`, 'INNINGS BREAK', `${m.team(inn.bowl).name.toUpperCase()} NEED ${m.target} TO WIN`) });
+    else items.push({ ms: 7000, render: () => bannerHTML(m.team(m.winner || inn.bat), 'MATCH RESULT', m.winner ? `${m.team(m.winner).name.toUpperCase()} WIN` : 'TIED', m.result) });
+    items.push(cards.batting(m.current), cards.bowling(m.current), cards.worm(12000));
+  } else if (ev.overComplete) {
+    const n = inn.legal / 6;
+    if (T.wormEvery && n % T.wormEvery === 0) items.push(cards.worm());
+    else items.push(cards.batting(m.current), cards.bowling(m.current));
+  }
+  if (items.length) director.push(...items);
+}
+
+/* ═══════════════ simulated match (demo / test data) ═══════════════ */
+const pick = a => a[Math.floor(Math.random() * a.length)];
+function chooseBowler() {
+  const inn = m.inn, pool = m.team(inn.bowl).players.slice(-6), maxB = CFG.match.maxOversPerBowler * 6;
+  const last = inn.bowlHist[inn.bowlHist.length - 1], prev = inn.bowlHist[inn.bowlHist.length - 2];
+  const ok = pool.filter(n => n !== last && (inn.bowlers.find(b => b.name === n)?.balls || 0) < maxB);
+  if (prev && ok.includes(prev) && Math.random() < 0.75) return prev;   // bowlers usually swap ends in spells
+  return pick(ok.length ? ok : pool.filter(n => n !== last));
+}
+function randomWicket() {
+  const inn = m.inn, fl = m.team(inn.bowl).players, bw = inn.bowlers[inn.bowler].name, r = Math.random();
+  if (r < 0.3) return { type: 'bowled' };
+  if (r < 0.75) return { type: 'caught', fielder: Math.random() < 0.1 ? bw : pick(fl) };
+  if (r < 0.85) return { type: 'lbw' };
+  if (r < 0.93) return { type: 'run out', fielder: pick(fl) };
+  return { type: 'stumped', fielder: fl[m.team(inn.bowl).keeper ?? 1] };
+}
+function randomBall() {
+  const r = Math.random();
+  if (r < 0.03) return { extra: 'wd', runs: 0 };
+  if (r < 0.04) return { extra: 'nb', runs: Math.random() < 0.3 ? 1 : 0 };
+  if (r < 0.06) return { extra: 'lb', runs: 1 };
+  if (r < 0.105) return { runs: 0, wicket: randomWicket() };
+  if (r < 0.43) return { runs: 0 };
+  if (r < 0.70) return { runs: 1 };
+  if (r < 0.80) return { runs: 2 };
+  if (r < 0.82) return { runs: 3 };
+  if (r < 0.94) return { runs: 4 };
+  return { runs: 6 };
+}
+const sim = {
+  running: !params.has('paused'), interval: CFG.demo.ballIntervalMs,
+  step(make) {
+    if (m.status !== 'live') return null;
+    if (m.inn.needBowler) m.setBowler(chooseBowler());
+    return onBall(m.bowl(make ? make() : randomBall()));
+  },
+  async loop() {
+    for (;;) {
+      await sleep(this.interval);
+      if (!this.running) continue;
+      await director.idle();
+      if (!this.running) continue;
+      if (m.status === 'break') { await sleep(1200); m.startSecondInnings(); m.setBowler(chooseBowler()); lastScore = ''; renderBug(); continue; }
+      if (m.status === 'complete') continue;
+      this.step();
+    }
+  },
+  fastForward(done) {
+    quiet = true; let guard = 0;
+    while (!done() && m.status !== 'complete' && guard++ < 2000) {
+      if (m.status === 'break') { m.startSecondInnings(); continue; }
+      this.step();
+    }
+    if (m.status === 'live' && m.inn.needBowler) m.setBowler(chooseBowler());
+    quiet = false; director.clear(); lastScore = ''; renderBug();
+  },
+};
+
+/* ═══════════════ demo controls (?demo) ═══════════════ */
+function buildControls() {
+  document.body.classList.add('field');
+  const c = document.createElement('div'); c.id = 'ctl';
+  c.innerHTML = `<button class="hide" data-a="hide" title="Hide (press C to show)">✕</button><h3>Test match</h3>
+    <div class="g"><button data-a="play">Pause</button><button data-a="next">Next ball</button>
+    <button data-a="dot">Dot ball</button><button data-a="one">Single</button>
+    <button data-a="four">FOUR</button><button data-a="six">SIX</button>
+    <button data-a="wkt" class="w">Wicket</button></div>
+    <h3>Show now</h3>
+    <div class="g"><button data-a="bat">Batting card</button><button data-a="bowl">Bowling card</button>
+    <button data-a="worm" class="w">Score worm</button></div>
+    <h3>Jump ahead</h3>
+    <div class="g"><button data-a="ff5">+5 overs</button><button data-a="ff2">To the chase</button>
+    <button data-a="ffend">Last 2 overs</button><button data-a="restart">Restart</button></div>
+    <label>Ball every <b id="spd"></b>s<input id="speed" type="range" min="500" max="8000" step="250"></label>
+    <label><input id="bg" type="checkbox" checked> Pretend pitch background</label>`;
+  document.body.appendChild(c);
+  const speed = c.querySelector('#speed'), spd = c.querySelector('#spd');
+  speed.value = sim.interval; spd.textContent = (sim.interval / 1000).toFixed(1);
+  speed.oninput = () => { sim.interval = +speed.value; spd.textContent = (sim.interval / 1000).toFixed(1); };
+  c.querySelector('#bg').onchange = e => document.body.classList.toggle('field', e.target.checked);
+  const overs = CFG.match.oversPerInnings;
+  const act = {
+    hide: () => (c.style.display = 'none'),
+    play: b => { sim.running = !sim.running; b.textContent = sim.running ? 'Pause' : 'Play'; },
+    next: () => sim.step(), dot: () => sim.step(() => ({ runs: 0 })), one: () => sim.step(() => ({ runs: 1 })),
+    four: () => sim.step(() => ({ runs: 4 })), six: () => sim.step(() => ({ runs: 6 })),
+    wkt: () => sim.step(() => ({ runs: 0, wicket: randomWicket() })),
+    bat: () => director.push(cards.batting(m.current)), bowl: () => director.push(cards.bowling(m.current)), worm: () => director.push(cards.worm()),
+    ff5: () => { const i = m.current, tgt = Math.min(overs * 6, (Math.floor(m.inn.legal / 6) + 5) * 6); sim.fastForward(() => m.current !== i || m.inn.legal >= tgt); },
+    ff2: () => sim.fastForward(() => m.current === 1),
+    ffend: () => sim.fastForward(() => m.current === 1 && m.inn.legal >= (overs - 2) * 6),
+    restart: () => { director.clear(); m.reset(); m.setBowler(chooseBowler()); lastScore = ''; renderBug(); },
+  };
+  c.addEventListener('click', e => { const b = e.target.closest('button'); if (b && act[b.dataset.a]) act[b.dataset.a](b); });
+  addEventListener('keydown', e => { if (e.key === 'c') c.style.display = c.style.display === 'none' ? '' : 'none'; });
+}
+
+/* ═══════════════ boot ═══════════════ */
+const stage = document.getElementById('stage');
+function fit() {
+  const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+  stage.style.transform = `translate(${(innerWidth - 1920 * s) / 2}px,${(innerHeight - 1080 * s) / 2}px) scale(${s})`;
+}
+addEventListener('resize', fit); fit();
+m.setBowler(chooseBowler());
+renderBug();
+setChrome(true);
+setInterval(rotateStatus, CFG.statusRotateMs || 6000);
+if (DEMO) buildControls();
+document.fonts.ready.then(() => { stage.classList.add('ready'); sim.loop(); });
+</script>
+</body>
+</html>
