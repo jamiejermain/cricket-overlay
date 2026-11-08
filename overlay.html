@@ -37,10 +37,11 @@
   .bug.hidden { transform:translateY(190px); opacity:0; }
   .logo-panel { flex:0 0 190px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
     background:linear-gradient(135deg,var(--p),var(--pd)); }
-  .logo-panel::after { content:''; position:absolute; top:0; bottom:0; left:-90px; width:60px; transform:skewX(-20deg);
-    background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent); animation:shine 10s 3s infinite; }
-  .logo-panel.right::after { animation-delay:3.4s; }
-  @keyframes shine { 0%{left:-90px} 10%,100%{left:260px} }
+  /* gentle sheen: a soft, slow sweep about once every 45s (left logo, then right) */
+  .logo-panel::after { content:''; position:absolute; top:0; bottom:0; left:-160px; width:120px; transform:skewX(-20deg); pointer-events:none;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.16) 50%,transparent); animation:shine 45s 8s ease-in-out infinite; }
+  .logo-panel.right::after { animation-delay:10.5s; }
+  @keyframes shine { 0%{left:-160px} 7%,100%{left:300px} }
   .bug.entering > * { animation:segIn .5s cubic-bezier(.2,.9,.2,1) both; }
   .bug.entering > :nth-child(2) { animation-delay:.06s; } .bug.entering > :nth-child(3) { animation-delay:.12s; }
   .bug.entering > :nth-child(4) { animation-delay:.18s; } .bug.entering > :nth-child(5) { animation-delay:.24s; }
