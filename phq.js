@@ -22,7 +22,7 @@
         away { periods(scope: $scope) { period { value } ${STATS} teamEvents { sequenceNo playerID statistic { count } } type role closureStatus } }
         currentPeriod { value primarySide } } } }`,
     events: `query relayEvents($gameID: ID!, $after: Int, $filters: EventFilter) { gameEvents(gameID: $gameID, after: $after, filters: $filters) {
-      id title description sportEventStamp eventSection timestamp side period
+      __typename id title description sportEventStamp eventSection timestamp side period
       ... on ScoreEvent { score } ... on DismissalEvent { icon } ... on ExtraEvent { icon } } }`,
     // api.playhq.com (team names + logos)
     teams: `query relayTeams($gameId: ID!) { discoverGame(gameID: $gameId) { id
@@ -37,7 +37,6 @@
   const shortName = n => { const p = String(n).trim().split(/\s+/); return p.length > 1 ? `${p[0][0]}. ${p.slice(1).join(' ')}` : String(n); };
   const PERIODS = ['FIRST_INNINGS', 'SECOND_INNINGS'];
   const oversToBalls = o => { o = +o || 0; const w = Math.floor(o + 1e-9); return w * 6 + Math.round((o - w) * 10); };
-  const BALL_TYPES = ['ScoreEvent', 'ExtraEvent', 'DismissalEvent'];
 
   /* ── events cache: { "<PERIOD>|<SIDE>": { id: event } } ──
      `page` is one page of events, newest first. `latest` = it's the newest page,
@@ -75,7 +74,8 @@
       else { r.credited = n; r.boundary = n === 4 || n === 6 ? n : null; if (r.boundary) r.ran = 0; r.chip = { t: n ? `${n}nb` : 'nb', k: 'extra' }; }
     } else if (e.icon === 'B' || e.icon === 'LB') {
       const n = num(/(\d+)/, 1); r.runs = n; r.ran = n; r.chip = { t: `${n}${e.icon.toLowerCase()}`, k: 'extra' };
-    } else if (e.icon === 'W' || e.__typename === 'DismissalEvent') {
+    } else if (/retire/i.test(T)) return null;           // junior retirements: not a delivery, not a wicket
+    else if (e.icon === 'W' || e.__typename === 'DismissalEvent') {
       r.chip = { t: 'W', k: 'wkt' };
       const m = T.match(/^(.+?)\s+(?:was|is)\s+(\w+(?:\s+\w+)?)/i);
       r.wicket = { name: m ? m[1].trim() : facer, how: m ? m[2].toLowerCase() : '' };
@@ -249,7 +249,9 @@
     // New deliveries since the last publish (normally just one).
     const key = Object.keys(nextCache).find(k => nextCache[k][ni._lastBall]);
     const all = Object.values(nextCache[key] || {}).map(parseBall).filter(Boolean).sort((a, b) => a.ts - b.ts);
-    const from = all.findIndex(e => e.id === pi._lastBall), fresh = all.slice(from + 1);
+    const from = all.findIndex(e => e.id === pi._lastBall);
+    if (from < 0) return { kind: 'other' };            // the scorer corrected a ball: just redraw
+    const fresh = all.slice(from + 1);
     if (!fresh.length) return { kind: 'other' };
     const lastB = fresh[fresh.length - 1], named = n => ni.batters.find(b => b.name.toLowerCase() === String(n).toLowerCase());
     const wk = [...fresh].reverse().find(e => e.wicket);
@@ -259,8 +261,6 @@
       if (ob) wicket = { type: ob.wtype || wk.wicket.how || 'out', batter: { ...ob }, text: [ob.how, ob.bow].filter(Boolean).join(' ') };
     }
     const facer = named(lastB.facer) || ni.batters[ni.striker] || { name: lastB.facer, runs: 0, balls: 0 };
-    const prevLegal = pi.legal || 0;
-    void prevLegal;
     const overComplete = fresh.some(e => e.legal && e.after > 0 && e.after % 6 === 0);
     const inningsComplete = !pi.complete && !!ni.complete;
     return { kind: 'ball', runs: lastB.runs, boundary: lastB.boundary, wicket, credited: lastB.credited, batter: { ...facer }, overComplete, inningsComplete };

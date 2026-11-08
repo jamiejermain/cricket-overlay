@@ -85,7 +85,7 @@ const prefsKey = 'cc.relay.' + GAME;
 let rp = LS.get(prefsKey, { home: null, away: null, on: true });
 let src = window.opener || null, srcOk = false;
 let teamsPhq = null, game = null, cache = {}, lastState = null, lastSetupJson = '', seq = LS.get('cc.relay.seq', 0);
-let lastBallAt = 0, lastErr = '', lastLine = '', running = false, logLines = [];
+let lastBallAt = 0, lastErr = '', running = false, logLines = [];
 let sync = null;
 
 function log(s) { logLines.unshift(new Date().toLocaleTimeString() + '  ' + s); logLines = logLines.slice(0, 30); const el = $('#log'); if (el) el.textContent = logLines.join('\n'); }
@@ -133,16 +133,21 @@ async function loadTeams() {
     teamsPhq = { home: { name: g.home.name, logo: g.home.logo ? pickLogo(g.home) : '' }, away: { name: g.away.name, logo: g.away.logo ? pickLogo(g.away) : '' } };
   } catch (e) { log('Team names: ' + e.message); }
 }
+// Newest page every poll. Page back further when joining, or if we've missed
+// more than a page (e.g. the connection dropped for a few overs). Page sizes vary.
 async function loadEvents(period, side, all) {
-  const key = `${period}|${side}`;
+  const key = `${period}|${side}`, known = new Set(Object.keys(cache[key] || {}));
   let page = (await ask('spectator', PlayHQ.Q.events, PlayHQ.eventsVars(GAME, period, side))).gameEvents || [];
   PlayHQ.ingestEvents(cache, key, page, true);
+  const gap = () => known.size > 0 && page.length > 0 && !page.some(e => known.has(e.id));
   let guard = 0;
-  while (all && page.length && guard++ < 80) {                 // older pages (sizes vary), once, when we first join
+  while ((all || gap()) && page.length && guard++ < 80) {
     const after = Math.min(...page.map(e => +e.timestamp));
     page = (await ask('spectator', PlayHQ.Q.events, PlayHQ.eventsVars(GAME, period, side, after))).gameEvents || [];
     PlayHQ.ingestEvents(cache, key, page, false);
   }
+  const newest = Object.values(cache[key] || {}).reduce((m, e) => Math.max(m, +e.timestamp), 0);
+  return newest;
 }
 let joined = {};
 async function poll() {
@@ -152,10 +157,18 @@ async function poll() {
   const R = game.result || {}, cur = R.currentPeriod || {};
   const inns = [];
   for (const k of ['home', 'away']) for (const p of (R[k] && R[k].periods) || []) if (p.role === 'BATTING' && /INNINGS/.test(p.period.value)) inns.push([p.period.value, k.toUpperCase()]);
+  let newest = 0;
   for (const [period, side] of inns) {
     const key = `${period}|${side}`, isCur = cur.value === period && cur.primarySide === side;
-    if (!joined[key]) { await loadEvents(period, side, true); joined[key] = true; }
-    else if (isCur) await loadEvents(period, side, false);
+    if (!joined[key]) { newest = Math.max(newest, await loadEvents(period, side, true)); joined[key] = true; }
+    else if (isCur) newest = Math.max(newest, await loadEvents(period, side, false));
+  }
+  // The scorecard was read a moment before the ball-by-ball. If a ball landed in
+  // between, read the scorecard again so the batter's runs include it.
+  const recorded = Date.parse(game.lastEventRecordedAt || '') || 0;
+  if (recorded && newest > recorded + 1000) {
+    const again = await ask('spectator', PlayHQ.Q.game, PlayHQ.gameVars(GAME));
+    if (again && again.game) game = again.game;
   }
   publishFrom(game);
 }
@@ -186,23 +199,36 @@ function describe(ev, s) {
 }
 
 /* ── loop ── */
+let fails = 0;
 async function loop() {
   if (running) return; running = true;
   for (;;) {
     try {
-      if (!src || src.closed) { srcOk = false; pill('bad', 'PlayHQ tab closed'); render(); await sleep(2000); continue; }
+      if (!src || src.closed) throw new Error('nosrc');
       if (!teamsPhq) { await loadTeams(); renderTeams(); }
-      await poll(); srcOk = true; lastErr = '';
+      await poll(); srcOk = true; lastErr = ''; fails = 0;
       pill(rp.on ? 'ok' : 'wait', rp.on ? (sync.mode === 'cloud' ? 'Sending live' : 'This browser only') : 'Paused');
     } catch (e) {
-      lastErr = e.message === 'nosrc' ? 'PlayHQ tab closed' : e.message === 'timeout' ? 'PlayHQ tab not answering' : e.message;
-      pill('bad', lastErr); log('Problem: ' + lastErr);
+      fails++;
+      const msg = e.message === 'nosrc' ? 'PlayHQ tab closed' : e.message === 'timeout' ? 'PlayHQ tab not answering'
+        : /fetch|network/i.test(e.message) ? "Can't reach PlayHQ" : e.message;
+      log('Problem: ' + msg);
+      // One blip is normal; only shout after a few in a row (or if the tab is gone).
+      if (fails >= 3 || e.message === 'nosrc') { srcOk = false; lastErr = msg; pill('bad', msg); } else pill('wait', 'Retrying…');
     }
     renderStatus();
-    await sleep(POLL_MS);
+    await tick(POLL_MS);
   }
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+// Timers in a background or covered window get slowed to once a minute by the
+// browser; a worker's timer isn't, so the relay keeps its pace.
+const ticker = (() => { try { return new Worker(URL.createObjectURL(new Blob(['onmessage=e=>setTimeout(()=>postMessage(0),e.data)'], { type: 'text/javascript' }))); } catch (e) { return null; } })();
+const tick = ms => ticker ? new Promise(r => { ticker.onmessage = () => r(); ticker.postMessage(ms); }) : sleep(ms);
+// Keep the screen awake while this window is showing.
+let wake = null;
+async function keepAwake() { try { if (navigator.wakeLock && document.visibilityState === 'visible' && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) {} }
+document.addEventListener('visibilitychange', keepAwake);
 
 /* ── screens ── */
 function bookmarkletCode() {
@@ -262,7 +288,9 @@ function renderTeams() {
 function renderStatus() {
   const el = $('#status'); if (!el) return;
   if (!srcOk && lastErr) {
-    el.innerHTML = `<div class="bad"><b>${esc(lastErr)}.</b> Go back to the game on playhq.com and tap the <b>📡 Cricket relay</b> bookmark again.</div>`; return;
+    const fix = lastErr === "Can't reach PlayHQ" ? 'Check the internet connection. It keeps retrying by itself.'
+      : 'Go back to the game on playhq.com (reload it if it looks stuck) and tap the <b>📡 Cricket relay</b> bookmark again.';
+    el.innerHTML = `<div class="bad"><b>${esc(lastErr)}.</b> ${fix}</div>`; return;
   }
   if (!lastState) { el.innerHTML = `<p class="muted">Connecting to PlayHQ…</p>`; return; }
   const s = lastState, i = s.innings[s.current], bat = teamFor(i.bat), bowl = teamFor(i.bowl);
@@ -290,11 +318,11 @@ document.addEventListener('click', e => {
     catch (x) { alert("That doesn't look like the scorer's \"Score on another device\" link."); }
   }
   if (a === 'copy') { const t = $('#code'); t.select(); navigator.clipboard ? navigator.clipboard.writeText(t.value).then(() => b.textContent = 'Copied ✓') : document.execCommand('copy'); }
-  if (a === 'pause' || a === 'resume') { rp.on = a === 'resume'; LS.set(prefsKey, rp); if (rp.on) { lastState = null; } renderStatus(); }
+  if (a === 'pause' || a === 'resume') { rp.on = a === 'resume'; LS.set(prefsKey, rp); if (rp.on) { lastState = null; lastSetupJson = ''; } renderStatus(); }
 });
 document.addEventListener('change', e => {
   const s = e.target.closest('select[data-team]'); if (!s) return;
-  rp[s.dataset.team] = s.value || ''; LS.set(prefsKey, rp); renderTeams(); lastState = null;   // republish with the new look
+  rp[s.dataset.team] = s.value || ''; LS.set(prefsKey, rp); renderTeams(); lastState = null; lastSetupJson = '';   // republish with the new look
 });
 document.addEventListener('dragstart', e => { if (e.target.id === 'bm') e.dataTransfer.setData('text/uri-list', bookmarkletCode()); });
 
@@ -304,7 +332,7 @@ function start() {
   render();
   const bm = $('#bm'); if (bm) { bm.href = bookmarkletCode(); bm.onclick = e => { e.preventDefault(); alert('Drag this button to your bookmarks bar. Then open the game on playhq.com and click it there.'); }; }
   const code = $('#code'); if (code) code.value = bookmarkletCode();
-  if (GAME && src) { setInterval(renderStatus, 1000); loop(); }
+  if (GAME && src) { setInterval(renderStatus, 1000); keepAwake(); loop(); }
 }
 if (settings.ch && settings.key) start(); else render();
 </script>
