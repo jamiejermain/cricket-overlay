@@ -134,7 +134,7 @@
   .card { position:absolute; left:50%; top:80px; width:1380px; margin-left:-690px; animation:cardIn .55s cubic-bezier(.2,.9,.2,1) both; }
   @keyframes cardIn { from { opacity:0; transform:translateY(40px) scale(.97); } }
   .crest { position:absolute; left:0; top:-12px; width:150px; height:150px; border-radius:50%; z-index:2;
-    background:radial-gradient(circle at 35% 30%,#2e3680,#0b0e2c); border:5px solid var(--a);
+    background:radial-gradient(circle at 35% 30%,var(--p),var(--pd)); border:5px solid var(--a);
     display:flex; align-items:center; justify-content:center; box-shadow:0 8px 24px rgba(0,0,0,.5); }
   .card-head { margin-left:70px; height:88px; display:flex; align-items:center; padding-left:110px; color:#fff;
     font-size:64px; font-weight:800; letter-spacing:2px; background:linear-gradient(90deg,#0b0e2c,var(--navy2));
@@ -171,6 +171,16 @@
   .worm .dotw { opacity:0; animation:fadeIn .3s forwards; }
   @keyframes draw { to { stroke-dashoffset:0; } }
   @keyframes fadeIn { to { opacity:1; } }
+  .wfow { display:flex; margin:8px 30px 0; border:2px solid rgba(255,255,255,.14); background:rgba(255,255,255,.03); }
+  .wfow .wl { flex:0 0 100px; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1;
+    font-size:28px; font-weight:800; color:var(--pt); background:linear-gradient(135deg,var(--p),var(--pd)); }
+  .wfow .wl i { font-style:normal; font-size:15px; letter-spacing:3px; opacity:.85; margin-top:2px; }
+  .wf { flex:1; min-width:0; position:relative; display:flex; flex-direction:column; align-items:center; padding:5px 4px 4px;
+    border-left:1px solid rgba(255,255,255,.1); color:#e9ecff; }
+  .wf em { position:absolute; left:6px; top:3px; font-style:normal; font-size:15px; font-weight:700; color:#8f98cf; }
+  .wf b { font-size:30px; line-height:1.05; }
+  .wf span { font-size:17px; color:#9aa3d6; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; letter-spacing:.3px; }
+  .wf.empty b { color:rgba(233,236,255,.22); }
   .worm .card-foot { flex-direction:column; align-items:stretch; height:auto; gap:0; padding:0; background:none; }
   .tbars { display:flex; gap:12px; padding:12px 0 0; }
   .tb { flex:1; display:flex; align-items:center; height:58px; padding:0 0 0 26px; color:var(--pt); font-size:32px; font-weight:800;
@@ -220,7 +230,7 @@ function shade(h, amt) { const f = v => Math.round(amt < 0 ? v * (1 + amt) : v +
 function textOn(h) { const [r, g, b] = hexRgb(h).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.42 ? '#10142e' : '#ffffff'; }
 const teamVars = t => `--p:${t.primary};--pd:${shade(t.primary, -0.45)};--pt:${textOn(t.primary)};--a:${t.accent};`;
 function badge(t, size) {
-  if (t.logo) return `<img src="${esc(t.logo)}" alt="" style="width:${size}px;height:${size}px;object-fit:contain">`;
+  if (t.logo) return `<img src="${esc(t.logo)}" alt="" style="width:${size}px;height:${size}px;object-fit:contain;filter:drop-shadow(0 3px 6px rgba(0,0,0,.45))">`;
   return `<svg viewBox="0 0 100 110" width="${size}" height="${size * 1.1}" style="filter:drop-shadow(0 4px 6px rgba(0,0,0,.4))">
     <path d="M50 4 L94 18 V52 C94 80 74 98 50 106 C26 98 6 80 6 52 V18 Z" fill="${t.primary}" stroke="${t.accent}" stroke-width="6"/>
     <path d="M50 14 L84 25 V52 C84 74 68 88 50 95 Z" fill="rgba(255,255,255,.12)"/>
@@ -282,7 +292,7 @@ function setChrome(show) {
 /* ═══════════════ cards ═══════════════ */
 function shell(t, title, sub, cols, body, foot, cls = '') {
   return `<div class="card ${cls}" style="${teamVars(t)}--cols:${cols}">
-    <div class="crest">${badge(t, 104)}</div>
+    <div class="crest">${badge(t, t.logo ? 112 : 104)}</div>
     <div class="card-head">${esc(title)}</div>
     <div class="card-sub">${esc(sub)}</div>
     <div class="card-body">${body}</div>
@@ -335,7 +345,7 @@ function wormBanner() {
   return `${m.team(inn.bat).name.toUpperCase()} NEED ${need} RUN${need === 1 ? '' : 'S'} OFF ${balls} BALL${balls === 1 ? '' : 'S'}`;
 }
 function wormCard() {
-  const W = 1320, H = 440, L = 80, R = 30, T = 24, B = 54, maxO = m.overs;
+  const W = 1320, H = 390, L = 80, R = 30, T = 24, B = 54, maxO = m.overs;
   const maxR = Math.max(30, ...m.innings.map(i => i.runs), m.current === 1 || m.status === 'break' ? m.target : 0);
   const step = niceStep(maxR / 5), yMax = Math.ceil(maxR / step) * step;
   const x = b => L + (b / 6) / maxO * (W - L - R), y = r => H - B - r / yMax * (H - T - B);
@@ -350,7 +360,10 @@ function wormCard() {
     const t = m.team(inn.bat);
     const pts = inn.worm.map(p => `${x(p.b).toFixed(1)},${y(p.r).toFixed(1)}`).join(' ');
     g += `<polyline class="draw" pathLength="1" points="${pts}" fill="none" stroke="${t.primary}" stroke-width="7" stroke-linejoin="round" stroke-linecap="round" style="animation-delay:${0.3 + k * 0.4}s"/>`;
-    inn.fow.forEach((f, i) => { g += `<circle class="dotw" cx="${x(f.b)}" cy="${y(f.r)}" r="10" fill="${t.primary}" stroke="#fff" stroke-width="3" style="animation-delay:${1.2 + k * 0.4 + i * 0.05}s"/>`; });
+    inn.fow.forEach((f, i) => {   // numbered wicket dots, matching the FOW strip below
+      g += `<g class="dotw" style="animation-delay:${1.2 + k * 0.4 + i * 0.05}s"><circle cx="${x(f.b)}" cy="${y(f.r)}" r="14" fill="${t.primary}" stroke="#fff" stroke-width="3"/>
+        <text x="${x(f.b)}" y="${y(f.r) + 6}" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="18" fill="${textOn(t.primary)}">${f.w}</text></g>`;
+    });
     const lp = inn.worm[inn.worm.length - 1];
     g += `<circle class="dotw" cx="${x(lp.b)}" cy="${y(lp.r)}" r="13" fill="#fff" stroke="${t.primary}" stroke-width="6" style="animation-delay:${2 + k * 0.4}s"/>`;
   });
@@ -358,9 +371,19 @@ function wormCard() {
     const t = m.team(inn.bat), rpo = inn.legal ? (inn.runs / (inn.legal / 6)).toFixed(2) : '0.00';
     return `<div class="tb" style="${teamVars(t)}"><span>${esc(t.name.toUpperCase())}</span><span class="rpo">${rpo} RPO</span><span class="ts">${inn.runs}-${inn.wkts}</span></div>`;
   }).join('');
+  // Fall of wickets: score when each wicket fell, with the batter and the over (as on a scorecard: 1-24 (Carter, 4.3 ov))
+  const fow = m.innings.map(inn => {
+    const tm = m.team(inn.bat);
+    const cells = Array.from({ length: m.maxWkts(inn) }, (_, i) => {
+      const f = inn.fow[i];
+      return f ? `<div class="wf"><em>${i + 1}</em><b>${f.r}</b><span>${esc(surname(f.name))} · ${oversStr(f.b)}</span></div>`
+               : `<div class="wf empty"><em>${i + 1}</em><b>–</b><span>&nbsp;</span></div>`;
+    }).join('');
+    return `<div class="wfow" style="${teamVars(tm)}"><span class="wl">${esc(tm.short)}<i>FOW</i></span>${cells}</div>`;
+  }).join('');
   const t = m.team(m.inn.bat);
   return shell(t, 'SCORE WORM', `${title()} · RUNS PER OVER`, '1fr',
-    `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>`,
+    `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>${fow}`,
     `<div class="tbars">${bars}</div><div class="wbanner">${esc(wormBanner())}</div>`, 'worm');
 }
 

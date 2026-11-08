@@ -46,9 +46,11 @@
   .team { border-top:6px solid var(--tp); }
   .team-head { display:flex; align-items:center; gap:12px; margin-bottom:12px; } .team-head h2 { margin:0; flex:1; }
   .team-head select { width:auto; margin:0; }
-  .logo { display:inline-flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden; flex:none;
-    font:800 18px var(--num); border:3px solid var(--ta); background:var(--tp); color:#fff; }
-  .logo img { width:100%; height:100%; object-fit:contain; background:#fff; }
+  /* logo preview mimics the overlay's logo panel, so you see how it will sit on the stream */
+  .logo { display:inline-flex; align-items:center; justify-content:center; border-radius:12px; overflow:hidden; flex:none; padding:5px;
+    font:800 18px var(--num); color:#fff; background:linear-gradient(135deg,rgba(0,0,0,0),rgba(0,0,0,.45)),var(--tp); }
+  .logo img { width:100%; height:100%; object-fit:contain; filter:drop-shadow(0 2px 4px rgba(0,0,0,.45)); }
+  .logo-acts { display:flex; gap:12px; flex-wrap:wrap; }
   .filebtn { position:relative; display:block; margin-top:5px; border:1.5px dashed var(--line); border-radius:10px; padding:11px; text-align:center; font-weight:600; color:var(--blue); }
   .filebtn input { position:absolute; inset:0; opacity:0; }
   .banner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:#fff7e0; border:1.5px solid #f3d27a; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
@@ -380,6 +382,7 @@ function moreSheet() {
     opt('bowler', 'Change bowler', 'injury / mid-over', live ? '' : 'disabled') +
     opt('five', '5 runs', 'e.g. overthrows', live && !m.needBowler ? '' : 'disabled') +
     opt('end', 'End innings', 'declared / out of time', game && m.status === 'live' ? '' : 'disabled') +
+    opt('logos', 'Fix team logos', 'remove logo backgrounds', game && (game.setup.teams.home.logo || game.setup.teams.away.logo) ? '' : 'disabled') +
     opt('newmatch', 'New match', 'close this one') +
     opt('settings', 'Settings', 'overlay link & database')), d => {
     closeSheet();
@@ -388,6 +391,7 @@ function moreSheet() {
       end: () => confirmSheet('End this innings now?', () => commit({ t: 'end' })),
       newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
       settings: settingsSheet,
+      logos: fixMatchLogos,
     })[d.v]();
   });
 }
@@ -445,7 +449,10 @@ function teamEditor(k) {
     <div class="row3"><label>Main colour<input type="color" data-t="${k}" data-f="primary" value="${t.primary}"></label>
       <label>Accent<input type="color" data-t="${k}" data-f="accent" value="${t.accent}"></label>
       <label>Logo<span class="filebtn">${t.logo ? 'Change' : 'Upload'}<input type="file" accept="image/*" data-logo="${k}"></span>
-        ${t.logo ? `<button class="link" data-clearlogo="${k}">Remove logo</button>` : ''}</label></div>
+        ${t.logo ? `<span class="logo-acts">${t.logoClean
+          ? `<button class="link" data-logokeep="${k}">Keep original</button>`
+          : `<button class="link" data-logoclean="${k}">Remove background</button>`}
+          <button class="link" data-clearlogo="${k}">Remove logo</button></span>` : ''}</label></div>
     <label>Players <span class="hint">one per line, in batting order · <span class="pc">${t.players.length}</span> players</span>
       <textarea data-t="${k}" data-f="players" rows="8" placeholder="First Last&#10;First Last&#10;…">${esc(t.players.join('\n'))}</textarea></label>
     <label>Wicketkeeper<select data-t="${k}" data-f="keeper">${keeperOpts(t)}</select></label>
@@ -493,22 +500,94 @@ app.addEventListener('change', async e => {
   if (el.dataset.load && el.value) { draft.teams[el.dataset.load] = deep(library[el.value]); saveDraft(); renderSetup(); }
   if (el.dataset.f === 'keeper') { draft.teams[el.dataset.t].keeper = +el.value; saveDraft(); }
   if (el.dataset.logo && el.files[0]) {
-    try { draft.teams[el.dataset.logo].logo = await readLogo(el.files[0]); saveDraft(); renderSetup(); }
-    catch (err) { toast('Could not read that image'); }
+    try {
+      const t = draft.teams[el.dataset.logo], { original, clean } = await readLogo(el.files[0]);
+      t.logoOriginal = original; t.logo = clean || original; t.logoClean = !!clean;
+      toast(clean ? 'Logo added – background removed' : 'Logo added');
+      saveDraft(); renderSetup();
+    } catch (err) { toast('Could not read that image'); }
   }
 });
-function readLogo(file) {
-  return new Promise((res, rej) => {
-    const img = new Image(), url = URL.createObjectURL(file);
-    img.onload = () => {
-      const S = 160, c = document.createElement('canvas'); c.width = c.height = S;
-      const k = Math.min(S / img.width, S / img.height), w = img.width * k, h = img.height * k;
-      c.getContext('2d').drawImage(img, (S - w) / 2, (S - h) / 2, w, h); URL.revokeObjectURL(url);
-      let d = c.toDataURL('image/webp', 0.85); if (!d.startsWith('data:image/webp')) d = c.toDataURL('image/png');
-      res(d);
-    };
-    img.onerror = rej; img.src = url;
-  });
+/* ── logos ──────────────────────────────────────────────────
+   Uploads are scaled into a 256px square. If the logo sits on a plain
+   background (very common: a crest on a coloured square), that background
+   is flood-filled to transparent from the edges, the edge pixels are
+   feathered, and the logo is trimmed so it fills the space. The original
+   is kept so "Keep original" can put it back. */
+const LOGO = 256;
+const loadImage = src => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+function fitSquare(img, pad = 0) {
+  const c = document.createElement('canvas'); c.width = c.height = LOGO;
+  const inner = LOGO * (1 - pad * 2), k = Math.min(inner / img.width, inner / img.height), w = img.width * k, h = img.height * k;
+  c.getContext('2d').drawImage(img, (LOGO - w) / 2, (LOGO - h) / 2, w, h);
+  return c;
+}
+function removeBackground(src) {
+  const S = src.width, ctx = src.getContext('2d'), im = ctx.getImageData(0, 0, S, S), px = im.data;
+  const border = [];
+  for (let i = 0; i < S; i++) border.push(i, (S - 1) * S + i, i * S, i * S + S - 1);
+  // already transparent around the edge? then just trim
+  const clear = border.filter(i => px[i * 4 + 3] < 24).length;
+  if (clear / border.length < 0.5) {
+    const bins = new Map();
+    for (const i of border) {
+      if (px[i * 4 + 3] < 24) continue;
+      const key = ((px[i * 4] >> 4) << 8) | ((px[i * 4 + 1] >> 4) << 4) | (px[i * 4 + 2] >> 4);
+      bins.set(key, (bins.get(key) || 0) + 1);
+    }
+    let best = 0, bestKey = 0; for (const [k, n] of bins) if (n > best) { best = n; bestKey = k; }
+    if (best / border.length < 0.45) return null;                 // no plain background to remove
+    const inBin = border.filter(i => (((px[i * 4] >> 4) << 8) | ((px[i * 4 + 1] >> 4) << 4) | (px[i * 4 + 2] >> 4)) === bestKey);
+    const bg = [0, 1, 2].map(c => inBin.reduce((s, i) => s + px[i * 4 + c], 0) / inBin.length);
+    const dist = i => Math.hypot(px[i * 4] - bg[0], px[i * 4 + 1] - bg[1], px[i * 4 + 2] - bg[2]);
+    const T1 = 40, T2 = 95, seen = new Uint8Array(S * S), stack = border.slice();
+    while (stack.length) {
+      const i = stack.pop(); if (seen[i]) continue; seen[i] = 1;
+      const d = dist(i);
+      if (d >= T2) continue;
+      if (d < T1) {
+        px[i * 4 + 3] = 0;
+        const x = i % S, y = (i / S) | 0;
+        if (x > 0) stack.push(i - 1); if (x < S - 1) stack.push(i + 1);
+        if (y > 0) stack.push(i - S); if (y < S - 1) stack.push(i + S);
+      } else px[i * 4 + 3] = Math.round(px[i * 4 + 3] * (d - T1) / (T2 - T1));   // feather the edge
+    }
+    ctx.putImageData(im, 0, 0);
+  }
+  // trim to the visible logo and re-centre with a little breathing room
+  let x0 = S, y0 = S, x1 = -1, y1 = -1;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (px[(y * S + x) * 4 + 3] > 16) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return null;
+  const crop = document.createElement('canvas'); crop.width = x1 - x0 + 1; crop.height = y1 - y0 + 1;
+  crop.getContext('2d').drawImage(src, x0, y0, crop.width, crop.height, 0, 0, crop.width, crop.height);
+  return fitSquare(crop, 0.04).toDataURL('image/png');
+}
+async function readLogo(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    const original = fitSquare(img).toDataURL('image/png');
+    const clean = removeBackground(fitSquare(img));
+    return { original, clean };
+  } finally { URL.revokeObjectURL(url); }
+}
+// Clean up the logos of the match already in progress, then republish.
+async function fixMatchLogos() {
+  let n = 0;
+  for (const k of ['home', 'away']) {
+    const t = game.setup.teams[k]; if (!t.logo) continue;
+    const clean = removeBackground(fitSquare(await loadImage(t.logo)));
+    if (clean) { t.logo = clean; n++; }
+  }
+  save(); publish('other', null, true); render();
+  toast(n ? `Fixed ${n} logo${n > 1 ? 's' : ''}` : "Couldn't find plain backgrounds to remove");
+}
+async function cleanLogo(t) {
+  const src = t.logoOriginal || t.logo;
+  const clean = removeBackground(fitSquare(await loadImage(src)));
+  if (!clean) return toast("Couldn't find a plain background to remove");
+  t.logoOriginal = src; t.logo = clean; t.logoClean = true;
+  toast('Background removed');
 }
 function startMatch() {
   for (const k of ['home', 'away']) {
@@ -520,7 +599,9 @@ function startMatch() {
   draft.match.oversPerInnings = Math.max(1, +draft.match.oversPerInnings || 20);
   draft.match.wideRuns = +draft.match.wideRuns || 0; draft.match.noBallRuns = +draft.match.noBallRuns || 0;
   saveDraft();
-  game = { setup: { ...deep(draft), id: rid(8), created: Date.now() }, actions: [], seq: 1 };
+  const setup = { ...deep(draft), id: rid(8), created: Date.now() };
+  for (const k of ['home', 'away']) { delete setup.teams[k].logoOriginal; delete setup.teams[k].logoClean; }   // keep what goes live small
+  game = { setup, actions: [], seq: 1 };
   cloudGame = null; rebuild(); save(); publish('new', null, true);
   render(); autoPrompt();
 }
@@ -611,7 +692,9 @@ app.addEventListener('click', e => {
   if (d.act === 'ignorecloud') { cloudGame = null; render(); return; }
   if (!game) {   // setup screen
     if (d.bf) { draft.battingFirst = d.bf; saveDraft(); document.querySelectorAll('[data-bf]').forEach(x => x.classList.toggle('on', x === b)); }
-    else if (d.clearlogo) { draft.teams[d.clearlogo].logo = ''; saveDraft(); renderSetup(); }
+    else if (d.clearlogo) { const t = draft.teams[d.clearlogo]; t.logo = ''; delete t.logoOriginal; delete t.logoClean; saveDraft(); renderSetup(); }
+    else if (d.logokeep) { const t = draft.teams[d.logokeep]; t.logo = t.logoOriginal || t.logo; t.logoClean = false; saveDraft(); renderSetup(); }
+    else if (d.logoclean) { cleanLogo(draft.teams[d.logoclean]).then(() => { saveDraft(); renderSetup(); }); }
     else if (d.save) { const t = draft.teams[d.save]; if (!t.name) return toast('Name the team first'); library[t.name] = deep(t); LS.set('cc.library', library); sync.put('library', library); toast(`Saved ${t.name}`); renderSetup(); }
     else if (d.act === 'start') startMatch();
     return;
