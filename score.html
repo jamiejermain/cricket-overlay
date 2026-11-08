@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#141a4a">
+<title>Live Scorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#eef1f7; --card:#fff; --ink:#10142e; --muted:#5a6286; --line:#dde2ee; --navy:#141a4a; --navy2:#232a6b;
+    --blue:#1e6fe5; --four:#1e88e5; --six:#f59e0b; --wkt:#e53935; --ok:#16a34a; --warn:#d97706;
+    --num:'Barlow Condensed','Arial Narrow',sans-serif; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.35 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  button { cursor:pointer; touch-action:manipulation; }
+  .top { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; padding:10px 14px; padding-top:max(10px, env(safe-area-inset-top));
+    background:var(--navy); color:#fff; }
+  .brand { font:800 22px var(--num); letter-spacing:1px; flex:1; }
+  .pill { border:0; border-radius:99px; padding:6px 12px; font-size:13px; font-weight:600; background:rgba(255,255,255,.12); color:#fff; white-space:nowrap; }
+  .pill::before { content:'●'; margin-right:6px; }
+  .pill.ok::before { color:#4ade80; } .pill.saving::before { color:#93c5fd; } .pill.retry::before { color:#fbbf24; }
+  .pill.denied::before { color:#f87171; } .pill.local::before { color:#9ca3af; }
+  .menu { border:0; background:rgba(255,255,255,.12); color:#fff; border-radius:10px; width:42px; height:38px; font-size:20px; }
+  main { max-width:1100px; margin:0 auto; padding:12px 12px calc(40px + env(safe-area-inset-bottom)); }
+  .card { background:var(--card); border-radius:16px; padding:16px; margin-bottom:12px; box-shadow:0 1px 2px rgba(16,20,46,.06), 0 4px 16px rgba(16,20,46,.05); }
+  h2 { margin:0 0 12px; font-size:19px; } h3 { margin:0 0 10px; font-size:15px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+  label { display:block; font-size:14px; font-weight:600; margin-bottom:12px; }
+  .hint { font-weight:400; color:var(--muted); font-size:13px; }
+  p.hint { margin:0 0 10px; }
+  input:not([type=color]):not([type=file]), select, textarea { display:block; width:100%; margin-top:5px; padding:11px 12px; border:1.5px solid var(--line);
+    border-radius:10px; background:#fff; font-size:16px; }
+  textarea { resize:vertical; line-height:1.5; }
+  input[type=color] { display:block; width:100%; height:46px; margin-top:5px; border:1.5px solid var(--line); border-radius:10px; padding:3px; background:#fff; }
+  .row2, .row3 { display:grid; gap:10px; } .row2 { grid-template-columns:2fr 1fr; } .row3 { grid-template-columns:1fr 1fr 1fr; }
+  .primary { border:0; border-radius:12px; padding:13px 18px; background:var(--blue); color:#fff; font-weight:700; }
+  .primary.big { width:100%; padding:18px; font-size:19px; }
+  .ghost { border:1.5px solid var(--line); border-radius:12px; padding:11px 16px; background:#fff; font-weight:600; text-decoration:none; display:inline-block; }
+  .link { border:0; background:none; color:var(--blue); padding:6px 0; font-weight:600; }
+  .seg { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .seg button { border:2px solid var(--line); background:#fff; border-radius:12px; padding:14px; font-weight:700; }
+  .seg button.on { border-color:var(--blue); background:#e8f0fe; color:var(--blue); }
+  .team { border-top:6px solid var(--tp); }
+  .team-head { display:flex; align-items:center; gap:12px; margin-bottom:12px; } .team-head h2 { margin:0; flex:1; }
+  .team-head select { width:auto; margin:0; }
+  .logo { display:inline-flex; align-items:center; justify-content:center; border-radius:50%; overflow:hidden; flex:none;
+    font:800 18px var(--num); border:3px solid var(--ta); background:var(--tp); color:#fff; }
+  .logo img { width:100%; height:100%; object-fit:contain; background:#fff; }
+  .filebtn { position:relative; display:block; margin-top:5px; border:1.5px dashed var(--line); border-radius:10px; padding:11px; text-align:center; font-weight:600; color:var(--blue); }
+  .filebtn input { position:absolute; inset:0; opacity:0; }
+  .banner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:#fff7e0; border:1.5px solid #f3d27a; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
+  .banner b { flex:1; }
+
+  /* scoring */
+  .grid { display:grid; gap:12px; align-items:start; }
+  /* two columns as soon as there's room — unfolded foldables, iPads, landscape */
+  @media (min-width:640px) {
+    main { padding-left:16px; padding-right:16px; }
+    .grid { grid-template-columns:1.05fr 1fr; }
+    .k { min-height:76px; font-size:34px; } .k.util { min-height:58px; }
+  }
+  @media (min-width:1000px) { .k { min-height:88px; font-size:40px; } }
+  /* dual-screen / folding devices that report two side-by-side segments: keep content off the fold */
+  @media (horizontal-viewport-segments:2) {
+    main { max-width:none; padding:12px 0; }
+    .grid { grid-template-columns:env(viewport-segment-width 0 0, 1fr) env(viewport-segment-width 1 0, 1fr);
+      column-gap:calc(env(viewport-segment-left 1 0, 0px) - env(viewport-segment-right 0 0, 0px)); }
+    .grid > div { padding:0 12px; }
+  }
+  .toggle { display:flex; align-items:center; gap:12px; padding:10px 0; border-top:1px solid var(--line); font-weight:600; font-size:15px; margin:0; }
+  .toggle span { flex:1; } .toggle small { display:block; font-weight:400; color:var(--muted); font-size:12px; }
+  .toggle input { appearance:none; -webkit-appearance:none; width:50px; height:30px; border-radius:99px; background:#cfd5e4; position:relative; transition:background .2s; flex:none; margin:0; }
+  .toggle input::after { content:''; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:left .2s; }
+  .toggle input:checked { background:var(--ok); } .toggle input:checked::after { left:23px; }
+  .remote .opts { margin-bottom:8px; }
+  .sb { border-radius:16px; padding:16px; color:#fff; margin-bottom:12px; background:linear-gradient(135deg,var(--tp),var(--navy) 85%); position:relative; overflow:hidden; }
+  .sb-top { display:flex; align-items:center; gap:12px; }
+  .sb-team { font:800 26px var(--num); letter-spacing:.5px; flex:1; line-height:1.1; }
+  .sb-score { font:800 54px/1 var(--num); }
+  .sb-ov { font:700 20px var(--num); opacity:.8; margin-left:6px; }
+  .sb-status { margin-top:10px; font-weight:600; font-size:15px; opacity:.95; }
+  .sb .logo { width:52px; height:52px; }
+  .bats { padding:6px 0; overflow:hidden; }
+  .bh, .brow { display:grid; grid-template-columns:1fr 38px 34px 30px 30px 40px; align-items:center; padding:8px 16px; gap:4px; }
+  .bh { font-size:12px; font-weight:700; color:var(--muted); letter-spacing:1px; text-transform:uppercase; }
+  .bh span:not(:first-child), .brow span:not(:first-child) { text-align:right; }
+  .brow { font-size:16px; border-top:1px solid var(--line); }
+  .brow .nm { font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .brow.on { background:#eef4ff; } .brow.on .nm { color:var(--blue); }
+  .brow .r { font:800 22px var(--num); }
+  .bwl { display:flex; align-items:center; gap:10px; padding:10px 16px; border-top:1px solid var(--line); background:#f7f8fc; }
+  .bwl .nm { flex:1; font-weight:600; } .bwl .fig { font:800 20px var(--num); } .bwl .hint { min-width:58px; text-align:right; }
+  .over { display:flex; align-items:center; gap:6px; padding:10px 16px; border-top:1px solid var(--line); flex-wrap:wrap; }
+  .over .hint { margin-right:4px; }
+  .chip { min-width:30px; height:30px; padding:0 6px; border-radius:7px; display:inline-flex; align-items:center; justify-content:center;
+    font:800 17px var(--num); background:#fff; border:1.5px solid #c9cfdf; }
+  .chip.dot { background:#2b3159; color:#aab2d8; border-color:#2b3159; }
+  .chip.four { background:var(--four); color:#fff; border-color:var(--four); }
+  .chip.six { background:var(--six); color:#fff; border-color:var(--six); }
+  .chip.wkt { background:var(--wkt); color:#fff; border-color:var(--wkt); }
+  .chip.extra { background:#fff4cc; color:#6d4c00; border-color:#f3c64a; font-size:14px; }
+  .last { display:flex; align-items:center; gap:10px; padding:10px 16px; border-top:1px solid var(--line); font-size:14px; color:var(--muted); }
+  .last b { color:var(--ink); flex:1; }
+
+  .pad { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
+  .k { border:0; border-radius:14px; min-height:68px; padding:6px; background:#fff; font:800 30px var(--num); color:var(--ink);
+    box-shadow:0 1px 0 #cfd5e4, 0 2px 8px rgba(16,20,46,.06); display:flex; flex-direction:column; align-items:center; justify-content:center; transition:transform .06s; }
+  .k:active { transform:scale(.96); }
+  .k small { font:600 11px -apple-system,sans-serif; color:var(--muted); letter-spacing:.5px; text-transform:uppercase; }
+  .k.four { background:var(--four); color:#fff; } .k.six { background:var(--six); color:#fff; }
+  .k.four small, .k.six small { color:rgba(255,255,255,.85); }
+  .k.ex { background:#fff4cc; color:#6d4c00; font:700 18px -apple-system,sans-serif; }
+  .k.wkt { background:var(--wkt); color:#fff; grid-column:span 2; font-size:26px; letter-spacing:1px; }
+  .k.util { background:#e4e8f2; font:700 16px -apple-system,sans-serif; min-height:54px; }
+  .k.span2 { grid-column:span 2; }
+  .pad.blocked .k:not(.util) { opacity:.3; pointer-events:none; }
+  .remote .opts { grid-template-columns:repeat(2,1fr); }
+  details summary { font-weight:700; cursor:pointer; padding:4px 0; }
+  table { width:100%; border-collapse:collapse; font-size:14px; margin-top:8px; }
+  th { text-align:right; font-size:11px; color:var(--muted); letter-spacing:1px; text-transform:uppercase; padding:6px 4px; }
+  td { text-align:right; padding:7px 4px; border-top:1px solid var(--line); }
+  th:first-child, td:first-child { text-align:left; } td small { color:var(--muted); display:block; font-size:12px; }
+  tr.on td { background:#eef4ff; }
+
+  /* sheets */
+  .sheet { position:fixed; inset:0; z-index:50; background:rgba(16,20,46,.45); display:flex; align-items:flex-end; justify-content:center; }
+  .sheet.hidden { display:none; }
+  .sheet-card { width:100%; max-width:640px; max-height:88vh; overflow:auto; background:#fff; border-radius:20px 20px 0 0; padding:16px 16px calc(20px + env(safe-area-inset-bottom));
+    animation:up .22s ease-out; }
+  @media (min-width:700px) { .sheet { align-items:center; } .sheet-card { border-radius:20px; } }
+  @keyframes up { from { transform:translateY(40px); opacity:0; } }
+  .sheet-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; } .sheet-head h2 { margin:0; flex:1; }
+  .x { border:0; background:#eef1f7; width:36px; height:36px; border-radius:50%; font-size:16px; }
+  .opts { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; }
+  .opt { border:1.5px solid var(--line); background:#fff; border-radius:12px; padding:14px 10px; font-weight:700; font-size:16px; text-align:center; min-height:56px; }
+  .opt small { display:block; font-weight:500; font-size:12px; color:var(--muted); margin-top:2px; }
+  .opt:active { background:#eef4ff; }
+  .opt:disabled { opacity:.35; }
+  .opt.danger { border-color:#f5b5b3; color:var(--wkt); }
+  .sheet-foot { margin-top:14px; display:flex; gap:8px; flex-wrap:wrap; }
+  .set { padding:12px 0; border-top:1px solid var(--line); } .set:first-of-type { border-top:0; padding-top:0; }
+  .set h4 { margin:0 0 4px; }
+  .copy { display:flex; gap:8px; margin-bottom:8px; } .copy input { margin:0 !important; font-size:13px !important; } .copy button { flex:none; }
+  #toast { position:fixed; left:50%; top:calc(70px + env(safe-area-inset-top)); transform:translateX(-50%); z-index:60; background:var(--navy); color:#fff;
+    padding:10px 18px; border-radius:99px; font-weight:700; box-shadow:0 8px 24px rgba(0,0,0,.25); opacity:0; pointer-events:none; transition:opacity .2s; white-space:nowrap; }
+  #toast.show { opacity:1; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">🏏 LIVE SCORER</div>
+  <button class="pill local" id="pill">This device only</button>
+  <button class="menu" id="menuBtn" aria-label="Menu">☰</button>
+</header>
+<main id="app"></main>
+<div class="sheet hidden" id="sheet"><div class="sheet-card">
+  <div class="sheet-head"><h2 id="sheetTitle"></h2><button class="x" id="sheetX" aria-label="Close">✕</button></div>
+  <div id="sheetBody"></div>
+</div></div>
+<div id="toast"></div>
+
+<script src="engine.js"></script>
+<script src="sync.js"></script>
+<script>
+const { replay, toState, other, oversStr, list, normaliseSetup } = window.CricketEngine;
+const $ = s => document.querySelector(s);
+const app = $('#app');
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const deep = o => JSON.parse(JSON.stringify(o));
+const rid = (n = 10) => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('');
+const LS = {
+  get(k, d = null) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast('Phone storage is full'); } },
+};
+
+/* ═══════════════ state ═══════════════ */
+let settings = LS.get('cc.settings') || { db: '', ch: rid(10) };
+const qp = new URLSearchParams(location.search);
+if (qp.get('ch')) {                               // opened from a "score on another device" link
+  settings.ch = qp.get('ch'); if (qp.has('db')) settings.db = qp.get('db');
+  history.replaceState(null, '', location.pathname);
+}
+LS.set('cc.settings', settings);
+let game = LS.get('cc.game');                     // { setup, actions, seq }
+let library = LS.get('cc.library', {});           // saved teams by name
+let draft = null, cloudGame = null;
+let m = null, lastEv = null, sync;
+
+function connect() {
+  sync = new CricketSync({ db: settings.db, ch: settings.ch });
+  sync.onStatus = setPill;
+  setPill(sync.mode === 'local' ? 'local' : 'ok');
+  sync.put('prefs', prefs);
+  if (sync.mode === 'cloud') {
+    sync.get('library').then(lib => { if (lib) { library = { ...lib, ...library }; LS.set('cc.library', library); if (!game) render(); } }).catch(() => {});
+    sync.get('scorer').then(s => {
+      if (s && s.setup && (!game || s.setup.id !== game.setup.id || (s.seq || 0) > (game.seq || 0))) { cloudGame = s; render(); }
+    }).catch(() => {});
+  }
+}
+function setPill(s) {
+  const txt = { local: 'This device only', ok: 'Live', saving: 'Sending…', retry: 'Offline – will resend', denied: 'Database blocked' }[s] || s;
+  const p = $('#pill'); p.className = 'pill ' + s; p.textContent = txt;
+}
+const team = k => game.setup.teams[k];
+function rebuild() { if (!game) { m = null; return; } const r = replay(game.setup, game.actions); m = r.m; lastEv = r.ev; }
+function save() { LS.set('cc.game', game); }
+
+/* Publish what the overlay reads: /live = { setup, tick:{ state, event } }.
+   A PlayHQ receiver will publish exactly the same shape. */
+function publish(kind, ev, full) {
+  if (!game) return;
+  const tick = { state: toState(m), event: { seq: game.seq, kind, ...(ev || {}) }, at: Date.now() };
+  const busy = p => sync.pending[p] || sync.inflight[p];
+  if (full || busy('live')) sync.put('live', { setup: game.setup, tick }); else sync.put('live/tick', tick);
+  if (full || busy('scorer')) sync.put('scorer', game); else { sync.put('scorer/actions', game.actions); sync.put('scorer/seq', game.seq); }
+}
+function commit(a) {
+  if (a.t !== 'open' && (m.status !== 'live' || (a.t === 'ball' && (m.needOpeners || m.needBowler)))) return toast(m.status === 'complete' ? 'Match is over – Undo to change it' : 'Finish the prompt first');
+  game.actions.push(a); game.seq = (game.seq || 0) + 1;
+  rebuild(); save();
+  publish(a.t === 'ball' && lastEv ? 'ball' : 'other', a.t === 'ball' ? lastEv : null);
+  if (navigator.vibrate) navigator.vibrate(12);
+  toast(describe(a));
+  render(); autoPrompt();
+}
+function undo() {
+  if (!game || !game.actions.length) return toast('Nothing to undo');
+  const a = game.actions.pop(); game.seq = (game.seq || 0) + 1;
+  rebuild(); save(); publish('undo');
+  toast('Undone: ' + describe(a));
+  render(); autoPrompt();
+}
+function describe(a) {
+  if (!a) return '';
+  if (a.t === 'ball') {
+    if (a.wicket) return `Wicket – ${a.wicket.type}`;
+    const s = n => (n === 1 ? '' : 's');
+    if (a.extra === 'wd') return `Wide${a.runs ? ` + ${a.runs}` : ''}`;
+    if (a.extra === 'nb') return `No ball${a.runs ? ` + ${a.runs}${a.nbx === 'b' ? ' byes' : a.nbx === 'lb' ? ' leg byes' : ''}` : ''}`;
+    if (a.extra === 'b') return `${a.runs} bye${s(a.runs)}`;
+    if (a.extra === 'lb') return `${a.runs} leg bye${s(a.runs)}`;
+    return a.runs === 0 ? 'Dot ball' : a.runs === 4 ? 'FOUR' : a.runs === 6 ? 'SIX' : `${a.runs} run${s(a.runs)}`;
+  }
+  return { open: 'Openers set', bowler: 'Bowler set', swap: 'Strike swapped', retire: 'Batter retired', end: 'Innings ended' }[a.t] || a.t;
+}
+// Overlay preferences, shared with the overlay at /prefs
+let prefs = { autoCards: true, autoHype: true, ...LS.get('cc.prefs', {}) };
+function setPref(k, v) { prefs[k] = v; LS.set('cc.prefs', prefs); sync.put('prefs', prefs); toast(`${k === 'autoCards' ? 'Auto cards' : 'Auto hype screens'} ${v ? 'on' : 'off'}`); }
+app.addEventListener('change', e => { const p = e.target.dataset.pref; if (p) setPref(p, e.target.checked); });
+function sendCmd(kind, label) { sync.put('cmd', { id: rid(6) + Date.now(), kind }); toast(label + (sync.mode === 'local' ? ' (this device only)' : '')); }
+
+/* ═══════════════ links ═══════════════ */
+function linkTo(page) {
+  const u = new URL(page, location.href); u.search = ''; u.hash = '';
+  u.searchParams.set('ch', settings.ch); if (settings.db) u.searchParams.set('db', settings.db);
+  return u.href;
+}
+
+/* ═══════════════ sheets ═══════════════ */
+let sheetHandler = null, sheetOpen = false;
+function openSheet(title, html, handler) {
+  $('#sheetTitle').textContent = title; $('#sheetBody').innerHTML = html; sheetHandler = handler;
+  $('#sheet').classList.remove('hidden'); sheetOpen = true; $('#sheetBody').scrollTop = 0;
+}
+function closeSheet() { $('#sheet').classList.add('hidden'); sheetOpen = false; sheetHandler = null; }
+$('#sheetX').onclick = closeSheet;
+$('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeSheet(); });
+$('#sheetBody').addEventListener('click', e => { const b = e.target.closest('button'); if (b && sheetHandler && !b.disabled) sheetHandler(b.dataset, b); });
+const opt = (v, label, sub = '', extra = '') => `<button class="opt" data-v="${esc(v)}" ${extra}>${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+const opts = html => `<div class="opts">${html}</div>`;
+function confirmSheet(text, yes) {
+  openSheet(text, opts(opt('yes', 'Yes') + opt('no', 'Cancel')), d => { closeSheet(); if (d.v === 'yes') yes(); });
+}
+
+function autoPrompt() {
+  if (!game || sheetOpen) return;
+  if (m.status === 'live' && m.needOpeners) openersSheet();
+  else if (m.needBowler) bowlerSheet();
+}
+function openersSheet() {
+  const brk = m.status === 'break', batKey = brk ? other(m.inn.bat) : m.inn.bat, bowlKey = other(batKey);
+  const bat = list(team(batKey).players), bowl = list(team(bowlKey).players), p = {};
+  const step = () => {
+    if (p.striker == null) return openSheet(`${team(batKey).name} – who's on strike?`, opts(bat.map((n, i) => opt(i, n)).join('')), d => { p.striker = +d.v; step(); });
+    if (p.nonStriker == null) return openSheet('…and the non-striker?', opts(bat.map((n, i) => opt(i, n, '', i === p.striker ? 'disabled' : '')).join('')), d => { p.nonStriker = +d.v; step(); });
+    openSheet(`${team(bowlKey).name} – opening bowler`, opts(bowl.map(n => opt(n, n)).join('')), d => { closeSheet(); commit({ t: 'open', ...p, bowler: d.v }); });
+  };
+  step();
+}
+function bowlerSheet(mid) {
+  const inn = m.inn, last = inn.bowlHist[inn.bowlHist.length - 1];
+  const fig = n => { const b = inn.bowlers.find(x => x.name === n); return b ? `${oversStr(b.balls)}-${b.maidens}-${b.runs}-${b.wkts}` : 'yet to bowl'; };
+  const html = opts(list(team(inn.bowl).players).map(n => {
+    const blocked = !mid && n === last;
+    return opt(n, n, blocked ? 'bowled last over' : fig(n), blocked ? 'disabled' : '');
+  }).join('')) + (mid ? '' : `<div class="sheet-foot"><button class="ghost" data-act="undo">↶ Undo last ball</button></div>`);
+  openSheet(mid ? 'Change bowler mid-over' : `Over ${Math.floor(inn.legal / 6) + 1} – who's bowling?`, html, d => {
+    closeSheet();
+    if (d.act === 'undo') return undo();
+    commit({ t: 'bowler', name: d.v, ...(mid ? { mid: true } : {}) });
+  });
+}
+function extraSheet(x, nbx = '') {
+  if (x === 'nb') {
+    const modes = [['', 'Off the bat'], ['b', 'Byes'], ['lb', 'Leg byes']];
+    const vals = nbx ? [0, 1, 2, 3, 4] : [0, 1, 2, 3, 4, 6];
+    openSheet('No ball', `<div class="seg" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">${modes.map(([v, l]) => `<button data-mode="${v}" class="${v === nbx ? 'on' : ''}">${l}</button>`).join('')}</div>
+      <p class="hint">${nbx ? `${nbx === 'b' ? 'Byes' : 'Leg byes'} they ran off the no-ball` : 'Runs off the bat'} (the no-ball itself is added automatically)</p>` +
+      opts(vals.map(v => opt(v, v === 4 && nbx ? '+4 boundary' : `+${v}`)).join('')),
+    d => { if (d.mode != null) return extraSheet('nb', d.mode); closeSheet(); commit({ t: 'ball', extra: 'nb', runs: +d.v, ...(nbx ? { nbx } : {}) }); });
+    return;
+  }
+  const c = {
+    wd: ['Wide', 'Any runs they ran as well? (the wide itself is added automatically)', [0, 1, 2, 3, 4], v => (v === 4 ? '+4 boundary' : `+${v}`)],
+    nb: ['No ball', 'Runs off the bat (the no-ball itself is added automatically)', [0, 1, 2, 3, 4, 6], v => `+${v}`],
+    b: ['Byes', 'How many byes?', [1, 2, 3, 4], String],
+    lb: ['Leg byes', 'How many leg byes?', [1, 2, 3, 4], String],
+  }[x];
+  openSheet(c[0], `<p class="hint">${c[1]}</p>` + opts(c[2].map(v => opt(v, c[3](v))).join('')), d => { closeSheet(); commit({ t: 'ball', extra: x, runs: +d.v }); });
+}
+function wicketSheet() {
+  const inn = m.inn, st = inn.batters[inn.striker], ns = inn.batters[inn.nonStriker], bw = inn.bowlers[inn.bowler];
+  const fielders = list(team(inn.bowl).players), keeper = fielders[+team(inn.bowl).keeper || 0];
+  const skip = `<div class="sheet-foot"><button class="ghost" data-act="skip">Not sure – skip</button></div>`;
+  const w = {};
+  const types = [['bowled', 'Bowled'], ['caught', 'Caught'], ['lbw', 'LBW'], ['run out', 'Run out'], ['stumped', 'Stumped'], ['hit wicket', 'Hit wicket']];
+  const step = () => {
+    if (!w.type) return openSheet('Wicket! How out?', opts(types.map(([v, l]) => opt(v, l, v === 'run out' ? 'either batter' : st.name)).join('')),
+      d => { w.type = d.v; if (w.type === 'stumped') w.fielder = keeper; step(); });
+    if (w.type === 'caught' && w.fielder === undefined)
+      return openSheet('Caught by…', opts(fielders.map(n => opt(n, n, n === bw.name ? 'caught & bowled' : n === keeper ? 'keeper' : '')).join('')) + skip,
+        d => { w.fielder = d.act === 'skip' ? '' : d.v; step(); });
+    if (w.type === 'run out') {
+      if (w.out === undefined) return openSheet('Who was run out?', opts(opt('striker', st.name, 'on strike') + (ns ? opt('nonStriker', ns.name, 'non-striker') : '')), d => { w.out = d.v; step(); });
+      if (w.runs === undefined) return openSheet('Runs completed before the run out', opts([0, 1, 2, 3].map(v => opt(v, String(v))).join('')), d => { w.runs = +d.v; step(); });
+      if (w.fielder === undefined) return openSheet('Run out by…', opts(fielders.map(n => opt(n, n)).join('')) + skip, d => { w.fielder = d.act === 'skip' ? '' : d.v; step(); });
+    }
+    const avail = m.available(), lastOne = inn.wkts + 1 >= m.maxWkts() || !avail.length;
+    if (!lastOne && w.next === undefined)
+      return openSheet('Next batter in', opts(avail.map(b => opt(b.id, b.name, b.status === 'retired' ? 'retired – coming back' : '')).join('')), d => { w.next = +d.v; step(); });
+    closeSheet();
+    commit({ t: 'ball', runs: w.runs || 0, wicket: { type: w.type, ...(w.fielder ? { fielder: w.fielder } : {}), ...(w.out ? { out: w.out } : {}) }, ...(w.next != null ? { next: w.next } : {}) });
+  };
+  step();
+}
+function retireSheet() {
+  const inn = m.inn, r = {};
+  const step = () => {
+    if (!r.who) return openSheet('Retire which batter?', opts(opt('striker', inn.batters[inn.striker].name, 'on strike') + opt('nonStriker', inn.batters[inn.nonStriker].name, 'non-striker')), d => { r.who = d.v; step(); });
+    const avail = m.available();
+    if (r.next === undefined && avail.length) return openSheet('Replacement batter', opts(avail.map(b => opt(b.id, b.name)).join('')), d => { r.next = +d.v; step(); });
+    closeSheet(); commit({ t: 'retire', who: r.who, ...(r.next != null ? { next: r.next } : {}) });
+  };
+  step();
+}
+function moreSheet() {
+  const live = game && m.status === 'live' && !m.needOpeners;
+  openSheet('More', opts(
+    opt('retire', 'Retire batter', 'retired not out', live ? '' : 'disabled') +
+    opt('bowler', 'Change bowler', 'injury / mid-over', live ? '' : 'disabled') +
+    opt('five', '5 runs', 'e.g. overthrows', live && !m.needBowler ? '' : 'disabled') +
+    opt('end', 'End innings', 'declared / out of time', game && m.status === 'live' ? '' : 'disabled') +
+    opt('newmatch', 'New match', 'close this one') +
+    opt('settings', 'Settings', 'overlay link & database')), d => {
+    closeSheet();
+    ({
+      retire: retireSheet, bowler: () => bowlerSheet(true), five: () => commit({ t: 'ball', runs: 5 }),
+      end: () => confirmSheet('End this innings now?', () => commit({ t: 'end' })),
+      newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
+      settings: settingsSheet,
+    })[d.v]();
+  });
+}
+function settingsSheet() {
+  const olink = linkTo('overlay.html'), slink = linkTo('score.html');
+  openSheet('Settings', `
+    <div class="set"><h4>Overlay link for PRISM</h4>
+      <p class="hint">Paste this into PRISM's Web widget on the streaming phone. It stays the same for every match.</p>
+      <div class="copy"><input readonly value="${esc(olink)}"><button class="ghost" data-act="copyo">Copy</button></div>
+      <a class="link" href="${esc(olink)}" target="_blank" rel="noopener">Open overlay to check it →</a></div>
+    <div class="set"><h4>Database (Firebase)</h4>
+      <p class="hint">Sends the score to the streaming phone. Leave blank to only test on this device.</p>
+      <input id="dburl" placeholder="https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app" value="${esc(settings.db)}" autocapitalize="off" autocorrect="off">
+      <div class="sheet-foot"><button class="primary" data-act="savedb">Save &amp; test</button></div><p class="hint" id="dbmsg"></p></div>
+    <div class="set"><h4>Score from another phone or iPad</h4>
+      <p class="hint">Open this link on the other device and it joins the same channel (<b>${esc(settings.ch)}</b>), including any match in progress.</p>
+      <div class="copy"><input readonly value="${esc(slink)}"><button class="ghost" data-act="copys">Copy</button></div></div>`,
+  async d => {
+    const copy = async t => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch (e) { toast('Copy failed – press and hold the link'); } };
+    if (d.act === 'copyo') return copy(olink);
+    if (d.act === 'copys') return copy(slink);
+    if (d.act === 'savedb') {
+      const v = $('#dburl').value.trim().replace(/\/+$/, ''), msg = $('#dbmsg');
+      if (v && !/^https?:\/\//.test(v)) { msg.textContent = 'That should start with https://'; return; }
+      settings.db = v; LS.set('cc.settings', settings); connect();
+      if (!v) { msg.textContent = 'Saved – this device only.'; return; }
+      msg.textContent = 'Testing…';
+      try {
+        const r = await fetch(sync.url('ping'), { method: 'PUT', body: JSON.stringify(Date.now()) });
+        msg.textContent = r.ok ? '✓ Connected. Copy the overlay link again – it has changed.' : r.status === 401 || r.status === 403 ? '✗ Database said no – check the rules step.' : '✗ Error ' + r.status;
+        if (r.ok && game) publish('other', null, true);
+      } catch (e) { msg.textContent = '✗ Could not reach that address.'; }
+    }
+  });
+}
+
+/* ═══════════════ setup screen ═══════════════ */
+const blankTeam = (name, short, primary, accent) => ({ name, short, primary, accent, logo: '', keeper: 0, players: [] });
+function defaultSetup() {
+  return { match: { title: '', oversPerInnings: 20, wideRuns: 1, noBallRuns: 1 },
+    teams: { home: blankTeam('', '', '#f47b20', '#ffd166'), away: blankTeam('', '', '#1f4fd1', '#7cc4ff') }, battingFirst: 'home' };
+}
+function logoHTML(t, size) {
+  return `<span class="logo" style="width:${size}px;height:${size}px;--tp:${t.primary};--ta:${t.accent}">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : esc((t.short || t.name || '?').slice(0, 3).toUpperCase())}</span>`;
+}
+function cloudBanner() {
+  if (!cloudGame) return '';
+  const s = cloudGame.setup, n = list(cloudGame.actions).length;
+  return `<div class="banner"><b>A match is saved online: ${esc(s.teams.home.name)} v ${esc(s.teams.away.name)} (${n} entries).</b>
+    <button class="primary" data-act="loadcloud">Continue it here</button><button class="link" data-act="ignorecloud">Ignore</button></div>`;
+}
+function teamEditor(k) {
+  const t = draft.teams[k], lib = Object.keys(library);
+  return `<section class="card team" data-team="${k}" style="--tp:${t.primary};--ta:${t.accent}">
+    <div class="team-head"><span class="lp">${logoHTML(t, 52)}</span><h2>${k === 'home' ? 'Home' : 'Away'} team</h2>
+      ${lib.length ? `<select data-load="${k}"><option value="">Load saved team…</option>${lib.map(n => `<option>${esc(n)}</option>`).join('')}</select>` : ''}</div>
+    <div class="row2"><label>Team name<input data-t="${k}" data-f="name" value="${esc(t.name)}" placeholder="${k === 'home' ? 'Tigers' : 'Hawks'}"></label>
+      <label>Short code<input data-t="${k}" data-f="short" maxlength="4" value="${esc(t.short)}" placeholder="${k === 'home' ? 'TIG' : 'HAW'}" autocapitalize="characters"></label></div>
+    <div class="row3"><label>Main colour<input type="color" data-t="${k}" data-f="primary" value="${t.primary}"></label>
+      <label>Accent<input type="color" data-t="${k}" data-f="accent" value="${t.accent}"></label>
+      <label>Logo<span class="filebtn">${t.logo ? 'Change' : 'Upload'}<input type="file" accept="image/*" data-logo="${k}"></span>
+        ${t.logo ? `<button class="link" data-clearlogo="${k}">Remove logo</button>` : ''}</label></div>
+    <label>Players <span class="hint">one per line, in batting order · <span class="pc">${t.players.length}</span> players</span>
+      <textarea data-t="${k}" data-f="players" rows="8" placeholder="First Last&#10;First Last&#10;…">${esc(t.players.join('\n'))}</textarea></label>
+    <label>Wicketkeeper<select data-t="${k}" data-f="keeper">${keeperOpts(t)}</select></label>
+    <button class="ghost" data-save="${k}">Save team for next time</button>
+  </section>`;
+}
+const keeperOpts = t => t.players.length ? t.players.map((n, i) => `<option value="${i}" ${+t.keeper === i ? 'selected' : ''}>${esc(n)}</option>`).join('') : '<option>Add players first</option>';
+function renderSetup() {
+  if (!draft) draft = LS.get('cc.lastSetup') || defaultSetup();
+  const d = draft;
+  app.innerHTML = `${cloudBanner()}
+    <section class="card"><h2>New match</h2>
+      <label>Match title <span class="hint">shown on the stream</span><input data-m="title" value="${esc(d.match.title)}" placeholder="U12 Division 2 · Round 5"></label>
+      <div class="row3"><label>Overs<input type="number" inputmode="numeric" data-m="oversPerInnings" value="${d.match.oversPerInnings}"></label>
+        <label>Wide runs<input type="number" inputmode="numeric" data-m="wideRuns" value="${d.match.wideRuns}"></label>
+        <label>No-ball runs<input type="number" inputmode="numeric" data-m="noBallRuns" value="${d.match.noBallRuns}"></label></div>
+    </section>
+    ${teamEditor('home')}${teamEditor('away')}
+    <section class="card"><h2>Who bats first?</h2>
+      <div class="seg">${['home', 'away'].map(k => `<button data-bf="${k}" class="${d.battingFirst === k ? 'on' : ''}">${esc(d.teams[k].name || (k === 'home' ? 'Home' : 'Away'))}</button>`).join('')}</div></section>
+    <button class="primary big" data-act="start">Start match</button>`;
+}
+function saveDraft() { LS.set('cc.lastSetup', draft); }
+app.addEventListener('input', e => {
+  const el = e.target;
+  if (!draft || game) return;
+  if (el.dataset.m) { draft.match[el.dataset.m] = el.type === 'number' ? (el.value === '' ? '' : +el.value) : el.value; return saveDraft(); }
+  const k = el.dataset.t, f = el.dataset.f; if (!k || !f) return;
+  const t = draft.teams[k], sec = el.closest('.team');
+  if (f === 'players') {
+    t.players = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+    sec.querySelector('.pc').textContent = t.players.length;
+    sec.querySelector('[data-f=keeper]').innerHTML = keeperOpts(t);
+  } else if (f === 'keeper') t.keeper = +el.value;
+  else {
+    t[f] = f === 'short' ? el.value.toUpperCase() : el.value;
+    if (f === 'primary' || f === 'accent') { sec.style.setProperty(f === 'primary' ? '--tp' : '--ta', el.value); }
+    sec.querySelector('.lp').innerHTML = logoHTML(t, 52);
+    if (f === 'name') document.querySelector(`[data-bf=${k}]`).textContent = el.value || (k === 'home' ? 'Home' : 'Away');
+  }
+  saveDraft();
+});
+app.addEventListener('change', async e => {
+  const el = e.target;
+  if (el.dataset.load && el.value) { draft.teams[el.dataset.load] = deep(library[el.value]); saveDraft(); renderSetup(); }
+  if (el.dataset.f === 'keeper') { draft.teams[el.dataset.t].keeper = +el.value; saveDraft(); }
+  if (el.dataset.logo && el.files[0]) {
+    try { draft.teams[el.dataset.logo].logo = await readLogo(el.files[0]); saveDraft(); renderSetup(); }
+    catch (err) { toast('Could not read that image'); }
+  }
+});
+function readLogo(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const S = 160, c = document.createElement('canvas'); c.width = c.height = S;
+      const k = Math.min(S / img.width, S / img.height), w = img.width * k, h = img.height * k;
+      c.getContext('2d').drawImage(img, (S - w) / 2, (S - h) / 2, w, h); URL.revokeObjectURL(url);
+      let d = c.toDataURL('image/webp', 0.85); if (!d.startsWith('data:image/webp')) d = c.toDataURL('image/png');
+      res(d);
+    };
+    img.onerror = rej; img.src = url;
+  });
+}
+function startMatch() {
+  for (const k of ['home', 'away']) {
+    const t = draft.teams[k];
+    if (!t.name.trim()) return toast(`Add the ${k} team's name`);
+    if (t.players.length < 2) return toast(`${t.name} needs at least 2 players`);
+    if (!t.short) t.short = t.name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
+  }
+  draft.match.oversPerInnings = Math.max(1, +draft.match.oversPerInnings || 20);
+  draft.match.wideRuns = +draft.match.wideRuns || 0; draft.match.noBallRuns = +draft.match.noBallRuns || 0;
+  saveDraft();
+  game = { setup: { ...deep(draft), id: rid(8), created: Date.now() }, actions: [], seq: 1 };
+  cloudGame = null; rebuild(); save(); publish('new', null, true);
+  render(); autoPrompt();
+}
+
+/* ═══════════════ scoring screen ═══════════════ */
+function renderScore() {
+  const inn = m.inn, bat = team(inn.bat);
+  const st = inn.batters[inn.striker], ns = inn.batters[inn.nonStriker], bw = inn.bowlers[inn.bowler];
+  const rate = (r, b) => (b ? (r / (b / 6)).toFixed(2) : '0.00');
+  let status;
+  if (m.status === 'complete') status = m.result;
+  else if (m.status === 'break') status = `Innings break · ${team(inn.bowl).name} need ${m.target} to win`;
+  else if (m.current === 0) status = `1st innings · Run rate ${rate(inn.runs, inn.legal)}`;
+  else { const need = m.target - inn.runs, balls = m.overs * 6 - inn.legal; status = `Need ${need} off ${balls} · Req. rate ${(need / Math.max(1, balls) * 6).toFixed(2)} · Target ${m.target}`; }
+
+  let prompt = '', blocked = true;
+  if (m.status === 'complete') prompt = `<div class="banner"><b>🏆 ${esc(m.result)}</b><button class="primary" data-act="newmatch">New match</button></div>`;
+  else if (m.status === 'break') prompt = `<div class="banner"><b>Innings break – ${esc(team(inn.bowl).name)} need ${m.target} to win.</b><button class="primary" data-act="openers">Start 2nd innings</button></div>`;
+  else if (m.needOpeners) prompt = `<div class="banner"><b>Pick the opening batters and bowler.</b><button class="primary" data-act="openers">Choose openers</button></div>`;
+  else if (m.needBowler) prompt = `<div class="banner"><b>End of the over – who's bowling next?</b><button class="primary" data-act="bowler">Choose bowler</button></div>`;
+  else blocked = false;
+
+  const row = (b, on) => b && b.status === 'batting' ? `<div class="brow ${on ? 'on' : ''}"><span class="nm">${esc(b.name)}${on ? ' *' : ''}</span><span class="r">${b.runs}</span><span>${b.balls}</span><span>${b.fours}</span><span>${b.sixes}</span><span>${b.balls ? (b.runs / b.balls * 100).toFixed(0) : '–'}</span></div>` : '';
+  const chips = inn.thisOver.map(c => `<span class="chip ${c.k}">${esc(c.t)}</span>`).join('') || '<span class="hint">no balls yet</span>';
+  const lastA = game.actions[game.actions.length - 1];
+
+  app.innerHTML = `${cloudBanner()}${prompt}
+  <div class="grid">
+    <div>
+      <section class="sb" style="--tp:${bat.primary}">
+        <div class="sb-top">${logoHTML(bat, 52)}<div class="sb-team">${esc(bat.name)}</div>
+          <div><span class="sb-score">${inn.runs}-${inn.wkts}</span><span class="sb-ov">${oversStr(inn.legal)}</span></div></div>
+        <div class="sb-status">${esc(status)}</div>
+      </section>
+      <section class="card bats">
+        <div class="bh"><span>Batter</span><span>R</span><span>B</span><span>4s</span><span>6s</span><span>SR</span></div>
+        ${row(st, true)}${row(ns, false)}
+        ${bw ? `<div class="bwl"><span class="hint">Bowling</span><span class="nm">${esc(bw.name)}</span><span class="fig">${bw.wkts}-${bw.runs}</span><span class="hint">${oversStr(bw.balls)} ov</span></div>` : ''}
+        <div class="over"><span class="hint">This over</span>${chips}</div>
+        ${lastA ? `<div class="last">Last: <b>${esc(describe(lastA))}</b><button class="link" data-act="undo">↶ Undo</button></div>` : ''}
+      </section>
+    </div>
+    <div>
+      <section class="pad ${blocked ? 'blocked' : ''}">
+        <button class="k" data-r="0">0<small>dot</small></button><button class="k" data-r="1">1</button>
+        <button class="k" data-r="2">2</button><button class="k" data-r="3">3</button>
+        <button class="k four" data-r="4">4<small>four</small></button><button class="k six" data-r="6">6<small>six</small></button>
+        <button class="k ex" data-x="wd">Wide</button><button class="k ex" data-x="nb">No ball</button>
+        <button class="k ex" data-x="b">Bye</button><button class="k ex" data-x="lb">Leg bye</button>
+        <button class="k wkt" data-act="wicket">WICKET</button>
+        <button class="k util" data-act="undo">↶ Undo</button><button class="k util" data-act="swap">⇄ Swap</button>
+        <button class="k util span2" data-act="more">More…</button>
+      </section>
+      <section class="card remote"><h3>Show on stream</h3>
+        <div class="opts">
+          <button class="opt" data-cmd="batting">Batting card</button><button class="opt" data-cmd="bowling">Bowling card</button>
+          <button class="opt" data-cmd="worm">Score worm</button><button class="opt" data-cmd="clear">Back to score bar</button>
+          <button class="opt" data-cmd="hide">Hide overlay</button><button class="opt" data-cmd="show">Show overlay</button>
+        </div>
+        <p class="hint">Cards you show here stay up until you tap “Back to score bar” (max 1 min).</p>
+        <label class="toggle"><span>Auto cards at end of over<small>batting + bowling, worm every ${esc(String(5))}th over</small></span><input type="checkbox" data-pref="autoCards" ${prefs.autoCards ? 'checked' : ''}></label>
+        <label class="toggle"><span>Auto FOUR / SIX / WICKET screens<small>plus FIFTY and CENTURY</small></span><input type="checkbox" data-pref="autoHype" ${prefs.autoHype ? 'checked' : ''}></label>
+      </section>
+    </div>
+  </div>
+  <section class="card"><details><summary>Full scorecard</summary>${scorecards()}</details></section>`;
+}
+function scorecards() {
+  return m.innings.map((inn, i) => {
+    const t = team(inn.bat), ids = [...inn.order, ...inn.batters.filter(b => !inn.order.includes(b.id)).map(b => b.id)];
+    const bats = ids.map(id => { const b = inn.batters[id]; if (b.status === 'yet') return `<tr><td>${esc(b.name)}<small>yet to bat</small></td><td></td><td></td><td></td><td></td></tr>`;
+      return `<tr class="${b.status === 'batting' ? 'on' : ''}"><td>${esc(b.name)}<small>${esc(b.status === 'batting' ? 'not out' : [b.how, b.bow].filter(Boolean).join(' '))}</small></td><td><b>${b.runs}</b></td><td>${b.balls}</td><td>${b.fours}</td><td>${b.sixes}</td></tr>`; }).join('');
+    const bowls = inn.bowlers.map(b => `<tr><td>${esc(b.name)}</td><td>${oversStr(b.balls)}</td><td>${b.maidens}</td><td>${b.runs}</td><td><b>${b.wkts}</b></td></tr>`).join('');
+    const ex = inn.extras;
+    return `<h3 style="margin-top:14px">${i + 1}${i ? 'nd' : 'st'} innings – ${esc(t.name)} ${inn.runs}-${inn.wkts} (${oversStr(inn.legal)})</h3>
+      <table><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th></tr>${bats}</table>
+      <p class="hint">Extras ${ex.wd + ex.nb + ex.b + ex.lb} (wd ${ex.wd}, nb ${ex.nb}, b ${ex.b}, lb ${ex.lb}) · FOW ${inn.fow.map(f => `${f.r}-${f.w}`).join(', ') || '–'}</p>
+      <table><tr><th>Bowler</th><th>O</th><th>M</th><th>R</th><th>W</th></tr>${bowls}</table>`;
+  }).join('');
+}
+
+/* ═══════════════ clicks ═══════════════ */
+app.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const d = b.dataset;
+  if (d.act === 'loadcloud') { const s = cloudGame; game = { setup: normaliseSetup(s.setup), actions: list(s.actions), seq: s.seq || 0 }; cloudGame = null; rebuild(); save(); render(); autoPrompt(); return; }
+  if (d.act === 'ignorecloud') { cloudGame = null; render(); return; }
+  if (!game) {   // setup screen
+    if (d.bf) { draft.battingFirst = d.bf; saveDraft(); document.querySelectorAll('[data-bf]').forEach(x => x.classList.toggle('on', x === b)); }
+    else if (d.clearlogo) { draft.teams[d.clearlogo].logo = ''; saveDraft(); renderSetup(); }
+    else if (d.save) { const t = draft.teams[d.save]; if (!t.name) return toast('Name the team first'); library[t.name] = deep(t); LS.set('cc.library', library); sync.put('library', library); toast(`Saved ${t.name}`); renderSetup(); }
+    else if (d.act === 'start') startMatch();
+    return;
+  }
+  if (d.r != null) return commit({ t: 'ball', runs: +d.r });
+  if (d.x) return extraSheet(d.x);
+  if (d.cmd) return sendCmd(d.cmd, b.textContent);
+  ({
+    wicket: wicketSheet, undo, more: moreSheet, openers: openersSheet, bowler: () => bowlerSheet(),
+    swap: () => commit({ t: 'swap' }),
+    newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
+  })[d.act]?.();
+});
+$('#menuBtn').onclick = () => (game ? moreSheet() : settingsSheet());
+$('#pill').onclick = settingsSheet;
+
+let toastT;
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), 1400); }
+
+// keep the screen awake while scoring
+let wake; document.addEventListener('click', async () => { try { if (!wake && navigator.wakeLock) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => (wake = null)); } } catch (e) {} });
+
+function render() { if (!game) renderSetup(); else renderScore(); }
+if (game) game.setup = normaliseSetup(game.setup);
+connect(); rebuild(); render(); autoPrompt();
+if (game && sync.mode === 'cloud') publish('other', null, true);
+</script>
+</body>
+</html>

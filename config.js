@@ -39,6 +39,7 @@ window.OVERLAY_CONFIG = {
     bowlingCard: 10000,  // end of over
     worm: 20000,         // end of over, replaces the two cards…
     wormEvery: 5,        // …every 5th over
+    manualHold: 60000,   // cards shown from the scorer stay up until "Back to score bar", or this long
   },
   hype: { fours: true, sixes: true, wickets: true, milestones: true },  // milestones = FIFTY! / CENTURY!
 
