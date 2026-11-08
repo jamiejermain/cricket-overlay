@@ -78,6 +78,8 @@
   .toggle input::after { content:''; position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:left .2s; }
   .toggle input:checked { background:var(--ok); } .toggle input:checked::after { left:23px; }
   .remote .opts { margin-bottom:8px; }
+  .seg3 { grid-template-columns:repeat(3,1fr); margin-bottom:6px; } .seg3 button { padding:11px 6px; }
+  .remote .toggle:first-of-type { padding-bottom:6px; }
   .opt.brk { width:100%; margin-bottom:8px; background:#e8f0fe; border-color:#b9d0fb; color:var(--blue); }
   .opt.brk.on { background:var(--blue); border-color:var(--blue); color:#fff; }
   .sb { border-radius:16px; padding:16px; color:#fff; margin-bottom:12px; background:linear-gradient(135deg,var(--tp),var(--navy) 85%); position:relative; overflow:hidden; }
@@ -258,8 +260,11 @@ function describe(a) {
   return { open: 'Openers set', bowler: 'Bowler set', swap: 'Strike swapped', retire: 'Batter retired', end: 'Innings ended' }[a.t] || a.t;
 }
 // Overlay preferences, shared with the overlay at /prefs
-let prefs = { autoCards: true, autoHype: true, ...LS.get('cc.prefs', {}) };
-function setPref(k, v) { prefs[k] = v; LS.set('cc.prefs', prefs); sync.put('prefs', prefs); toast(`${k === 'autoCards' ? 'Auto cards' : 'Auto hype screens'} ${v ? 'on' : 'off'}`); }
+let prefs = { autoCards: true, autoHype: true, logoStyle: 'circle', ...LS.get('cc.prefs', {}) };
+function setPref(k, v) {
+  prefs[k] = v; LS.set('cc.prefs', prefs); sync.put('prefs', prefs);
+  toast(k === 'logoStyle' ? `Logo style: ${{ circle: 'Circle', fill: 'Fill', clean: 'Cut-out' }[v]}` : `${k === 'autoCards' ? 'Auto cards' : 'Auto hype screens'} ${v ? 'on' : 'off'}`);
+}
 app.addEventListener('change', e => { const p = e.target.dataset.pref; if (p) setPref(p, e.target.checked); });
 let breakOn = false;   // whether we've put the overlay into break mode
 function toggleBreak() {
@@ -576,8 +581,9 @@ async function fixMatchLogos() {
   let n = 0;
   for (const k of ['home', 'away']) {
     const t = game.setup.teams[k]; if (!t.logo) continue;
-    const clean = removeBackground(fitSquare(await loadImage(t.logo)));
-    if (clean) { t.logo = clean; n++; }
+    const src = t.logoOriginal || t.logo;
+    const clean = removeBackground(fitSquare(await loadImage(src)));
+    if (clean) { t.logoOriginal = src; t.logo = clean; n++; }
   }
   save(); publish('other', null, true); render();
   toast(n ? `Fixed ${n} logo${n > 1 ? 's' : ''}` : "Couldn't find plain backgrounds to remove");
@@ -600,8 +606,7 @@ function startMatch() {
   draft.match.wideRuns = +draft.match.wideRuns || 0; draft.match.noBallRuns = +draft.match.noBallRuns || 0;
   saveDraft();
   const setup = { ...deep(draft), id: rid(8), created: Date.now() };
-  for (const k of ['home', 'away']) { delete setup.teams[k].logoOriginal; delete setup.teams[k].logoClean; }   // keep what goes live small
-  game = { setup, actions: [], seq: 1 };
+  game = { setup, actions: [], seq: 1 };   // keeps logo + logoOriginal so every overlay logo style can use the real artwork
   cloudGame = null; rebuild(); save(); publish('new', null, true);
   render(); autoPrompt();
 }
@@ -663,6 +668,9 @@ function renderScore() {
           <button class="opt" data-cmd="hide">Hide overlay</button><button class="opt" data-cmd="show">Show overlay</button>
         </div>
         <p class="hint">Cards you show here stay up until you tap “Back to score bar” (max 1 min).</p>
+        <div class="toggle"><span>Logo style<small>how team logos sit on the stream</small></span></div>
+        <div class="seg seg3">${[['circle', 'Circle'], ['fill', 'Fill'], ['clean', 'Cut-out']].map(([v, l]) =>
+          `<button data-logostyle="${v}" class="${prefs.logoStyle === v ? 'on' : ''}">${l}</button>`).join('')}</div>
         <label class="toggle"><span>Auto cards at end of over<small>batting + bowling, worm every ${esc(String(5))}th over</small></span><input type="checkbox" data-pref="autoCards" ${prefs.autoCards ? 'checked' : ''}></label>
         <label class="toggle"><span>Auto FOUR / SIX / WICKET screens<small>plus FIFTY and CENTURY</small></span><input type="checkbox" data-pref="autoHype" ${prefs.autoHype ? 'checked' : ''}></label>
       </section>
@@ -699,6 +707,7 @@ app.addEventListener('click', e => {
     else if (d.act === 'start') startMatch();
     return;
   }
+  if (d.logostyle) { setPref('logoStyle', d.logostyle); document.querySelectorAll('[data-logostyle]').forEach(x => x.classList.toggle('on', x === b)); return; }
   if (d.r != null) return commit({ t: 'ball', runs: +d.r });
   if (d.x) return extraSheet(d.x);
   if (d.cmd) return sendCmd(d.cmd, b.textContent);

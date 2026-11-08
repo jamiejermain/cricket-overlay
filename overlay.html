@@ -42,6 +42,14 @@
     background:linear-gradient(90deg,transparent,rgba(255,255,255,.16) 50%,transparent); animation:shine 45s 8s ease-in-out infinite; }
   .logo-panel.right::after { animation-delay:10.5s; }
   @keyframes shine { 0%{left:-160px} 7%,100%{left:300px} }
+  .lp-circle { width:84px; height:84px; border-radius:50%; overflow:hidden; border:4px solid var(--a); background:#fff; flex:none;
+    box-shadow:0 4px 12px rgba(0,0,0,.45); position:relative; z-index:1; }
+  .lp-circle img { width:100%; height:100%; object-fit:cover; display:block; }
+  .lp-fill img { height:118%; width:auto; flex:none; }
+  .lp-fill::before { content:''; position:absolute; inset:0; z-index:1; pointer-events:none;
+    background:linear-gradient(90deg,transparent 55%,rgba(11,14,44,.55)); }
+  .logo-panel.right.lp-fill::before { background:linear-gradient(270deg,transparent 55%,rgba(11,14,44,.55)); }
+  .crest-img { overflow:hidden; } .crest-img img { width:100%; height:100%; object-fit:cover; display:block; }
   .bug.entering > * { animation:segIn .5s cubic-bezier(.2,.9,.2,1) both; }
   .bug.entering > :nth-child(2) { animation-delay:.06s; } .bug.entering > :nth-child(3) { animation-delay:.12s; }
   .bug.entering > :nth-child(4) { animation-delay:.18s; } .bug.entering > :nth-child(5) { animation-delay:.24s; }
@@ -237,6 +245,46 @@ function badge(t, size) {
     <text x="50" y="68" text-anchor="middle" font-family="Barlow Condensed,sans-serif" font-weight="800" font-size="34" fill="${textOn(t.primary)}">${esc(t.short.slice(0, 3))}</text></svg>`;
 }
 
+/* ═══════════════ logo styles ═══════════════
+   'clean'  – background removed, logo sits on the team gradient
+   'circle' – original logo in a circle with an accent-colour ring
+   'fill'   – original logo zoomed to fill the panel (international-broadcast style) */
+const logoStyle = () => (typeof prefs !== 'undefined' && prefs.logoStyle) || CFG.logoStyle || 'circle';
+const origLogo = t => t.logoOriginal || t.logo;
+function logoPanel(t, side) {
+  const st = t.logo ? logoStyle() : 'clean';
+  if (st === 'fill') {   // logo scaled up to the panel height; the rest of the panel takes the logo's own background colour
+    const bg = edgeColour(origLogo(t));
+    return `<div class="logo-panel ${side} lp-fill" style="${teamVars(t)}${bg ? `background:${bg};` : ''}"><img src="${esc(origLogo(t))}" alt=""></div>`;
+  }
+  if (st === 'circle') return `<div class="logo-panel ${side}" style="${teamVars(t)}"><span class="lp-circle"><img src="${esc(origLogo(t))}" alt=""></span></div>`;
+  return `<div class="logo-panel ${side}" style="${teamVars(t)}">${badge(t, 74)}</div>`;
+}
+// Average colour around the edge of a logo (its background), worked out once per image.
+const edgeCache = new Map();
+function edgeColour(src) {
+  if (edgeCache.has(src)) return edgeCache.get(src);
+  edgeCache.set(src, null);
+  const img = new Image();
+  img.onload = () => {
+    const S = 64, c = document.createElement('canvas'); c.width = c.height = S;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0, S, S);
+    const d = g.getImageData(0, 0, S, S).data; let r = 0, gg = 0, b = 0, n = 0;
+    for (let i = 0; i < S; i++) for (const [x, y] of [[i, 0], [i, S - 1], [0, i], [S - 1, i]]) {
+      const k = (y * S + x) * 4; if (d[k + 3] < 128) continue; r += d[k]; gg += d[k + 1]; b += d[k + 2]; n++;
+    }
+    edgeCache.set(src, n > S ? `rgb(${Math.round(r / n)},${Math.round(gg / n)},${Math.round(b / n)})` : null);
+    renderBug();
+  };
+  img.src = src;
+  return null;
+}
+function crestHTML(t) {
+  const st = t.logo ? logoStyle() : 'clean';
+  if (st === 'clean') return `<div class="crest">${badge(t, t.logo ? 112 : 104)}</div>`;
+  return `<div class="crest crest-img"><img src="${esc(origLogo(t))}" alt=""></div>`;
+}
+
 /* ═══════════════ score bar ═══════════════ */
 let m = new Match(CFG);
 let hasGame = true, hiddenByCmd = false;
@@ -257,7 +305,7 @@ function renderBug() {
   const chips = inn.thisOver.map((c, i, a) => `<span class="chip ${c.k} ${i === a.length - 1 ? 'new' : ''}">${esc(c.t)}</span>`).join('');
   const sl = statusList(m), st = sl[statusIdx % sl.length];
   bugEl.innerHTML = `
-    <div class="logo-panel left" style="${teamVars(bat)}">${badge(bat, 74)}</div>
+    ${logoPanel(bat, 'left')}
     <div class="seg team" style="${teamVars(bat)}">
       <div class="r1"><span class="code">${esc(bat.short)}</span><span class="score ${flash}">${score}</span><span class="ovs">${oversStr(inn.legal)}</span></div>
       <div class="r2 ${st.length > 20 ? 'long' : ''}" id="status"><span class="st">${esc(st)}</span></div>
@@ -270,7 +318,7 @@ function renderBug() {
       <div class="r1">${batRow(pair[1])}</div>
       <div class="r2">${bw ? `<span class="nm">${esc(surname(bw.name))}</span><span class="fig">${bw.wkts}-${bw.runs}</span><span class="bov">${oversStr(bw.balls)}</span>` : ''}</div>
     </div>
-    <div class="logo-panel right" style="${teamVars(bowl)}">${badge(bowl, 74)}</div>`;
+    ${logoPanel(bowl, 'right')}`;
   if (CFG.showLiveTag) liveEl.innerHTML = `<span class="tag"><span class="dot"></span>LIVE</span><span class="lt">${esc(title())}</span>
     <span class="vs">${esc(m.team(m.innings[0].bat).short)}<i>v</i>${esc(m.team(m.innings[0].bowl).short)}</span>`;
 }
@@ -292,7 +340,7 @@ function setChrome(show) {
 /* ═══════════════ cards ═══════════════ */
 function shell(t, title, sub, cols, body, foot, cls = '') {
   return `<div class="card ${cls}" style="${teamVars(t)}--cols:${cols}">
-    <div class="crest">${badge(t, t.logo ? 112 : 104)}</div>
+    ${crestHTML(t)}
     <div class="card-head">${esc(title)}</div>
     <div class="card-sub">${esc(sub)}</div>
     <div class="card-body">${body}</div>
@@ -451,7 +499,7 @@ const cards = {
 
 /* What happens after each ball. A PlayHQ feed will call this the same way. */
 let quiet = false;
-const prefs = { autoCards: true, autoHype: true };   // switched from the scorer app
+const prefs = { autoCards: true, autoHype: true, logoStyle: CFG.logoStyle || 'circle' };   // switched from the scorer app
 function onBall(ev) {
   renderBug();
   if (quiet) return;
@@ -497,7 +545,10 @@ function startLive() {
     if (event && event.kind === 'undo') { director.clear(); lastScore = ''; renderBug(); return; }
     if (next && event && event.kind === 'ball') onBall(event); else renderBug();
   });
-  sync.listen('prefs', p => { prefs.autoCards = !p || p.autoCards !== false; prefs.autoHype = !p || p.autoHype !== false; });
+  sync.listen('prefs', p => {
+    prefs.autoCards = !p || p.autoCards !== false; prefs.autoHype = !p || p.autoHype !== false;
+    prefs.logoStyle = (p && p.logoStyle) || CFG.logoStyle || 'circle'; renderBug();
+  });
   let seenCmd;
   sync.listen('cmd', c => {
     const id = c && c.id;
