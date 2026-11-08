@@ -401,7 +401,7 @@ function moreSheet() {
   });
 }
 function settingsSheet() {
-  const olink = linkTo('overlay.html'), slink = linkTo('score.html', true);
+  const olink = linkTo('overlay.html'), slink = linkTo('score.html', true), rlink = linkTo('relay.html', true);
   const where = sync.mode === 'cloud' ? 'Connected to the cricket-live server.' : 'No server set up – this device only.';
   openSheet('Settings', `
     <div class="set"><h4>Overlay link for PRISM</h4>
@@ -411,11 +411,16 @@ function settingsSheet() {
     <div class="set"><h4>Score from another phone or iPad</h4>
       <p class="hint">Open this link on the other device to score the same match. <b>Keep it private</b> – it includes your scorer key, so anyone with it can change the score.</p>
       <div class="copy"><input readonly value="${esc(slink)}"><button class="ghost" data-act="copys">Copy</button></div></div>
+    <div class="set"><h4>Follow PlayHQ instead of scoring</h4>
+      <p class="hint">If the club scorer is scoring the game live on PlayHQ, the relay can send PlayHQ's score to your overlay. Open this on a laptop or iPad (keep it private too – it includes your scorer key).</p>
+      <div class="copy"><input readonly value="${esc(rlink)}"><button class="ghost" data-act="copyr">Copy</button></div>
+      <a class="link" href="${esc(rlink)}" target="_blank" rel="noopener">Set up the PlayHQ relay →</a></div>
     <div class="set"><h4>Connection</h4><p class="hint">${where} Channel <b>${esc(settings.ch)}</b>.</p>
       <div class="sheet-foot"><button class="ghost" data-act="test">Test connection</button></div><p class="hint" id="testmsg"></p></div>`,
   async d => {
     const copy = async t => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch (e) { toast('Copy failed – press and hold the link'); } };
     if (d.act === 'copyo') return copy(olink);
+    if (d.act === 'copyr') return copy(rlink);
     if (d.act === 'copys') return copy(slink);
     if (d.act === 'test') {
       const msg = $('#testmsg');

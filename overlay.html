@@ -266,6 +266,7 @@ function edgeColour(src) {
   if (edgeCache.has(src)) return edgeCache.get(src);
   edgeCache.set(src, null);
   const img = new Image();
+  if (/^https?:/.test(src)) img.crossOrigin = 'anonymous';   // PlayHQ logos come from another site
   img.onload = () => {
     const S = 64, c = document.createElement('canvas'); c.width = c.height = S;
     const g = c.getContext('2d'); g.drawImage(img, 0, 0, S, S);

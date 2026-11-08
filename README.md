@@ -5,6 +5,16 @@
 | `score.html` | Live scorer for a phone, foldable or iPad. Set up teams (colours, logos, players), score ball by ball, control the overlay. |
 | `overlay.html?ch=CODE` | The overlay for PRISM's Web widget. Follows whatever is published on that channel. Get the exact link from the scorer's Settings. |
 | `overlay.html?demo` | Pretend match with test controls. |
+| `relay.html` | Follows a game on PlayHQ's live scoring and publishes it to the channel instead of the scorer (see below). |
+
+## PlayHQ relay (no webhook needed)
+
+PlayHQ's game page reads a public "spectator" feed (`spectator.playhq.com/graphql`) with the scorecard and ball-by-ball. PlayHQ only lets its own pages read it (other servers get a 403, other sites are refused by CORS), and its pages can't send data to other sites (CSP). So the relay runs in the user's own browser:
+
+1. The **📡 Cricket relay** bookmarklet, tapped on the playhq.com game page, opens `relay.html` in a small window and answers that window's requests by fetching PlayHQ's feed (as the page itself does).
+2. `relay.html` polls every 4 s, converts PlayHQ's data with `phq.js` into the same `setup` / `state` / `event` shape, and publishes to `/ch/<code>/live` with the scorer key.
+
+Totals, figures, dismissals and FOW come from PlayHQ's structured scorecard; the ball-by-ball text gives this over, the worm, strike and hype events. Needs the PlayHQ page open with the screen on (laptop or iPad). Don't score the same match in the scorer at the same time.
 
 ## How the pieces fit
 
