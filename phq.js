@@ -29,6 +29,8 @@
       home { ... on DiscoverTeam { id name logo { sizes { url dimensions { width } } } } ... on ProvisionalTeam { name } }
       away { ... on DiscoverTeam { id name logo { sizes { url dimensions { width } } } } ... on ProvisionalTeam { name } } } }`,
   };
+  // Same scorecard, pushed by PlayHQ whenever the scorer records something.
+  Q.gameSub = Q.game.replace('query relayGame', 'subscription relayGameSub').replace('game(id: $id)', 'gameUpdated(id: $id)');
   const gameVars = id => ({ id, scope: 'BY_PERIOD' });
   const eventsVars = (gameID, period, side, after) => ({ gameID, filters: { period, side }, ...(after ? { after } : {}) });
 

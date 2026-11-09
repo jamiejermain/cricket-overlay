@@ -12,7 +12,8 @@
 PlayHQ's game page reads a public "spectator" feed (`spectator.playhq.com/graphql`) with the scorecard and ball-by-ball. PlayHQ only lets its own pages read it (other servers get a 403, other sites are refused by CORS), and its pages can't send data to other sites (CSP). So the relay runs in the user's own browser:
 
 1. The **📡 Cricket relay** bookmarklet, tapped on the playhq.com game page, opens `relay.html` in a small window and answers that window's requests by fetching PlayHQ's feed (as the page itself does).
-2. `relay.html` polls every 4 s, converts PlayHQ's data with `phq.js` into the same `setup` / `state` / `event` shape, and publishes to `/ch/<code>/live` with the scorer key.
+2. `relay.html` converts PlayHQ's data with `phq.js` into the same `setup` / `state` / `event` shape and publishes to `/ch/<code>/live` with the scorer key.
+3. **Live updates:** the bookmark also opens the same live connection the game page uses (`wss://spectator.playhq.com/graphql`, `gameUpdated` subscription). PlayHQ pushes the scorecard whenever the scorer records something; the relay then fetches that ball's commentary straight away (and once more 3 s later). While it's connected the relay only does a backup check every 30 s; without it (older bookmark, dropped connection, or a backup check finding a ball the connection missed) it checks every 4 s.
 
 Totals, figures, dismissals and FOW come from PlayHQ's structured scorecard; the ball-by-ball text gives this over, the worm, strike and hype events. Needs the PlayHQ page open with the screen on (laptop or iPad). Don't score the same match in the scorer at the same time.
 

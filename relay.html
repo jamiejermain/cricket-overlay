@@ -73,7 +73,9 @@ const LS = {
 const { fromState, oversStr, statusList } = window.CricketEngine;
 const qp = new URLSearchParams(location.search);
 const GAME = (qp.get('game') || '').replace(/[^0-9a-z]/gi, '');
-const POLL_MS = 4000;
+const POLL_MS = 4000;          // no live connection: check every 4 s
+const BACKUP_MS = 30000;       // live connection up: PlayHQ pushes changes, check every 30 s as a backup
+const SETTLE_MS = 800;         // after a push, give PlayHQ a moment to save that ball's commentary too
 
 let settings = LS.get('cc.settings') || {};
 if (qp.get('ch') && qp.get('k')) {                   // opened from the scorer's private relay link
@@ -87,6 +89,8 @@ let src = window.opener || null, srcOk = false;
 let teamsPhq = null, game = null, cache = {}, lastState = null, lastSetupJson = '', seq = LS.get('cc.relay.seq', 0);
 let lastBallAt = 0, lastErr = '', running = false, logLines = [];
 let sync = null;
+// Live connection (opened by the bookmark in the PlayHQ tab).
+let live = false, liveSeen = false, pushed = null, pushes = 0, wakeUp = null, followUp = false;
 
 function log(s) { logLines.unshift(new Date().toLocaleTimeString() + '  ' + s); logLines = logLines.slice(0, 30); const el = $('#log'); if (el) el.textContent = logLines.join('\n'); }
 function pill(cls, txt) { const p = $('#pill'); p.className = 'pill ' + cls; p.textContent = txt; }
@@ -95,9 +99,22 @@ function pill(cls, txt) { const p = $('#pill'); p.className = 'pill ' + cls; p.t
 let reqId = 0; const waiting = {};
 addEventListener('message', e => {
   const d = e.data;
-  if (!d || d.t !== 'phq-r' || !/^https:\/\/([a-z0-9-]+\.)*playhq\.com$/.test(e.origin)) return;
+  if (!d || !/^https:\/\/([a-z0-9-]+\.)*playhq\.com$/.test(e.origin)) return;
+  if (d.t === 'phq-live') {
+    liveSeen = true;
+    if (d.on !== live) log(d.on ? 'Live updates on' : 'Live updates off' + (d.error ? ': ' + d.error : ', checking every 4 s'));
+    live = !!d.on; renderStatus(); return;
+  }
+  if (d.t === 'phq-push') {
+    const g = d.data && d.data.gameUpdated; if (!g) return;
+    pushed = g; pushes++; live = true; liveSeen = true;
+    if (wakeUp) wakeUp(); return;
+  }
   const w = waiting[d.id]; if (w) { delete waiting[d.id]; w(d); }
 });
+function subscribe() {
+  if (src && !src.closed) src.postMessage({ t: 'phq-sub', query: PlayHQ.Q.gameSub, variables: PlayHQ.gameVars(GAME) }, '*');
+}
 function ask(ep, query, variables, ms = 15000) {
   return new Promise((res, rej) => {
     if (!src || src.closed) return rej(new Error('nosrc'));
@@ -151,8 +168,9 @@ async function loadEvents(period, side, all) {
 }
 let joined = {};
 async function poll() {
-  const d = await ask('spectator', PlayHQ.Q.game, PlayHQ.gameVars(GAME));
-  game = d && d.game; if (!game) throw new Error('PlayHQ has no live data for this game');
+  if (pushed) { game = pushed; pushed = null; }
+  else { const d = await ask('spectator', PlayHQ.Q.game, PlayHQ.gameVars(GAME)); game = d && d.game; }
+  if (!game) throw new Error('PlayHQ has no live data for this game');
   // Which innings have data? Fetch their ball-by-ball (all of it the first time).
   const R = game.result || {}, cur = R.currentPeriod || {};
   const inns = [];
@@ -170,7 +188,7 @@ async function poll() {
     const again = await ask('spectator', PlayHQ.Q.game, PlayHQ.gameVars(GAME));
     if (again && again.game) game = again.game;
   }
-  publishFrom(game);
+  return publishFrom(game);
 }
 
 function publishFrom(g) {
@@ -182,15 +200,16 @@ function publishFrom(g) {
   else if (state.status === 'complete') state.result = 'MATCH COMPLETE';
   const ev = PlayHQ.diff(lastState, state, cache);
   showScore(setup, state);
-  if (!ev) return;
+  if (!ev) return null;
   const sJson = JSON.stringify(setup), newSetup = sJson !== lastSetupJson;
   lastState = state;
   if (ev.kind === 'ball') lastBallAt = Date.now();
-  if (!rp.on) return;
+  if (!rp.on) return ev;
   seq++; LS.set('cc.relay.seq', seq);
   const tick = { state, event: { seq, ...ev }, at: Date.now(), source: 'playhq' };
   if (newSetup) { sync.put('live', { setup, tick }); lastSetupJson = sJson; } else sync.put('live/tick', tick);
   if (ev.kind === 'ball') log(describe(ev, state));
+  return ev;
 }
 function describe(ev, s) {
   if (ev.wicket) return `WICKET – ${ev.wicket.batter.name} ${ev.wicket.text}`;
@@ -199,14 +218,18 @@ function describe(ev, s) {
 }
 
 /* ── loop ── */
-let fails = 0;
+let fails = 0, backupCheck = false;
 async function loop() {
   if (running) return; running = true;
   for (;;) {
     try {
       if (!src || src.closed) throw new Error('nosrc');
       if (!teamsPhq) { await loadTeams(); renderTeams(); }
-      await poll(); srcOk = true; lastErr = ''; fails = 0;
+      const ev = await poll(); srcOk = true;
+      // A 30-second backup check found a ball the live connection never told us
+      // about: it has gone quiet without closing. Reconnect, and check every 4 s
+      // until it's back.
+      if (backupCheck && live && ev && ev.kind === 'ball') { live = false; log('Live updates missed a ball: reconnecting, checking every 4 s'); subscribe(); } lastErr = ''; fails = 0;
       pill(rp.on ? 'ok' : 'wait', rp.on ? (sync.mode === 'cloud' ? 'Sending live' : 'This browser only') : 'Paused');
     } catch (e) {
       fails++;
@@ -217,14 +240,24 @@ async function loop() {
       if (fails >= 3 || e.message === 'nosrc') { srcOk = false; lastErr = msg; pill('bad', msg); } else pill('wait', 'Retrying…');
     }
     renderStatus();
-    await tick(POLL_MS);
+    if (pushed) { await tick(SETTLE_MS); continue; }   // a push came in while we were busy
+    // A push wakes us straight away; otherwise wait for the next backup check.
+    // After a push, check once more a few seconds later in case PlayHQ saved
+    // the commentary for that ball a little after the scorecard.
+    const wait = !live ? POLL_MS : followUp ? 3000 : BACKUP_MS;
+    backupCheck = wait === BACKUP_MS; followUp = false;
+    const woke = await new Promise(r => { wakeUp = () => r(true); tick(wait).then(() => r(false)); });
+    wakeUp = null;
+    if (woke) { followUp = true; backupCheck = false; await tick(SETTLE_MS); }
   }
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 // Timers in a background or covered window get slowed to once a minute by the
 // browser; a worker's timer isn't, so the relay keeps its pace.
-const ticker = (() => { try { return new Worker(URL.createObjectURL(new Blob(['onmessage=e=>setTimeout(()=>postMessage(0),e.data)'], { type: 'text/javascript' }))); } catch (e) { return null; } })();
-const tick = ms => ticker ? new Promise(r => { ticker.onmessage = () => r(); ticker.postMessage(ms); }) : sleep(ms);
+const ticker = (() => { try { return new Worker(URL.createObjectURL(new Blob(['onmessage=e=>setTimeout(()=>postMessage(e.data.id),e.data.ms)'], { type: 'text/javascript' }))); } catch (e) { return null; } })();
+const timers = {}; let timerId = 0;
+if (ticker) ticker.onmessage = e => { const r = timers[e.data]; delete timers[e.data]; if (r) r(); };
+const tick = ms => ticker ? new Promise(r => { const id = ++timerId; timers[id] = r; ticker.postMessage({ id, ms }); }) : sleep(ms);
 // Keep the screen awake while this window is showing.
 let wake = null;
 async function keepAwake() { try { if (navigator.wakeLock && document.visibilityState === 'visible' && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); } } catch (e) {} }
@@ -233,7 +266,7 @@ document.addEventListener('visibilitychange', keepAwake);
 /* ── screens ── */
 function bookmarkletCode() {
   const O = location.origin, P = O + location.pathname;
-  const js = `(()=>{const P=${JSON.stringify(P)};const m=location.pathname.match(/game-centre\\/([0-9a-z]+)/i);if(!/playhq\\.com$/.test(location.hostname)||!m){alert('Open the game on playhq.com first: the page with the Scorecard and Ball-by-ball tabs.');return}if(!window.__ccRelay){window.__ccRelay=1;addEventListener('message',async e=>{const d=e.data;if(e.origin!==${JSON.stringify(O)}||!d||d.t!=='phq')return;const u=d.ep==='api'?'https://api.playhq.com/graphql':'https://spectator.playhq.com/graphql';let r;try{const x=await fetch(u,{method:'POST',headers:{'content-type':'application/json','x-phq-tenant':'ca',tenant:'ca'},body:JSON.stringify({query:d.query,variables:d.variables})});r={ok:x.ok,status:x.status,json:await x.json()}}catch(err){r={ok:false,error:String(err)}}e.source.postMessage(Object.assign({t:'phq-r',id:d.id},r),e.origin)})}const w=window.open(P+'?game='+m[1]+'&title='+encodeURIComponent(document.title.split(' - ')[0].split(',')[0]),'cricketrelay','width=460,height=820');if(!w)alert('Allow pop-ups for playhq.com, then tap the bookmark again.')})()`;
+  const js = `(()=>{const P=${JSON.stringify(P)};const m=location.pathname.match(/game-centre\\/([0-9a-z]+)/i);if(!/playhq\\.com$/.test(location.hostname)||!m){alert('Open the game on playhq.com first: the page with the Scorecard and Ball-by-ball tabs.');return}const live=(s,o,d,n)=>{if(s.closed)return;const ws=new WebSocket('wss://spectator.playhq.com/graphql?tenant=ca','graphql-transport-ws');if(window.__ccWs)window.__ccWs.close();window.__ccWs=ws;let ok=0;const tell=m=>{try{s.postMessage(m,o)}catch(_){}};ws.onopen=()=>ws.send('{"type":"connection_init","payload":{}}');ws.onmessage=m=>{if(s.closed)return ws.close();const x=JSON.parse(m.data);if(x.type==='connection_ack'){ok=1;ws.send(JSON.stringify({id:'1',type:'subscribe',payload:{query:d.query,variables:d.variables}}));tell({t:'phq-live',on:true})}else if(x.type==='ping')ws.send('{"type":"pong"}');else if(x.type==='next')tell({t:'phq-push',data:x.payload&&x.payload.data});else if(x.type==='error')tell({t:'phq-live',on:false,error:JSON.stringify(x.payload).slice(0,200)})};ws.onclose=()=>{if(window.__ccWs!==ws)return;window.__ccWs=null;tell({t:'phq-live',on:false});const w=ok?2:Math.min(n*2,60);setTimeout(()=>live(s,o,d,w),w*1000)}};if(!window.__ccRelay){window.__ccRelay=1;addEventListener('message',async e=>{const d=e.data;if(e.origin!==${JSON.stringify(O)}||!d)return;if(d.t==='phq-sub')return live(e.source,e.origin,d,2);if(d.t!=='phq')return;const u=d.ep==='api'?'https://api.playhq.com/graphql':'https://spectator.playhq.com/graphql';let r;try{const x=await fetch(u,{method:'POST',headers:{'content-type':'application/json','x-phq-tenant':'ca',tenant:'ca'},body:JSON.stringify({query:d.query,variables:d.variables})});r={ok:x.ok,status:x.status,json:await x.json()}}catch(err){r={ok:false,error:String(err)}}e.source.postMessage(Object.assign({t:'phq-r',id:d.id},r),e.origin)})}const w=window.open(P+'?game='+m[1]+'&title='+encodeURIComponent(document.title.split(' - ')[0].split(',')[0]),'cricketrelay','width=460,height=820');if(!w)alert('Allow pop-ups for playhq.com, then tap the bookmark again.')})()`;
   return 'javascript:' + encodeURIComponent(js).replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%2F/g, '/').replace(/%3D/g, '=').replace(/%3B/g, ';');
 }
 function needLink() {
@@ -302,6 +335,7 @@ function renderStatus() {
     <div class="line"><b>${esc(line)}</b></div>
     <div class="line muted">${st ? `${esc(st.name)}* ${st.runs} (${st.balls})` : ''}${ns ? ` · ${esc(ns.name)} ${ns.runs} (${ns.balls})` : ''}${bw ? ` · ${esc(bw.name)} ${bw.wkts}-${bw.runs}` : ''}</div>
     <div class="line muted">This over: ${i.thisOver.map(c => esc(c.t)).join(' ') || '–'}${ago != null ? ` · last ball ${ago}s ago` : ''}</div>
+    <div class="line muted">${live ? '⚡ Live updates from PlayHQ' : liveSeen ? 'Live updates reconnecting… checking every 4 s' : 'Checking PlayHQ every 4 s' + (logLines.some(l => /older version/.test(l)) ? ' (re-add the bookmark for live updates)' : '')}</div>
     <div class="row" style="margin-top:12px">${rp.on ? `<button class="btn stop" data-act="pause">Pause sending</button>` : `<button class="btn" data-act="resume">Resume sending</button>`}
       <span class="muted">${rp.on ? 'The overlay is following PlayHQ.' : 'Paused: the overlay keeps the last score.'}</span></div>`;
 }
@@ -332,7 +366,10 @@ function start() {
   render();
   const bm = $('#bm'); if (bm) { bm.href = bookmarkletCode(); bm.onclick = e => { e.preventDefault(); alert('Drag this button to your bookmarks bar. Then open the game on playhq.com and click it there.'); }; }
   const code = $('#code'); if (code) code.value = bookmarkletCode();
-  if (GAME && src) { setInterval(renderStatus, 1000); keepAwake(); loop(); }
+  if (GAME && src) {
+    setInterval(renderStatus, 1000); keepAwake(); loop(); subscribe();
+    setTimeout(() => { if (!liveSeen) { log('This bookmark is an older version: checking every 4 s. Re-add it for live updates.'); renderStatus(); } }, 8000);
+  }
 }
 if (settings.ch && settings.key) start(); else render();
 </script>
