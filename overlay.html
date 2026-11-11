@@ -130,6 +130,47 @@
   .hype.mile .band { background:linear-gradient(90deg,#3a2400,#b8860b 50%,#3a2400); border-color:#ffe082; }
   .hype.wkt .band { background:linear-gradient(90deg,#5e0000,#d32f2f 50%,#5e0000); border-color:#fff; }
   .hype.wkt .big { filter:drop-shadow(0 0 28px rgba(255,80,80,.9)) drop-shadow(0 10px 0 rgba(0,0,0,.35)); }
+  /* wicket: details panel under the band */
+  .hype.wkt .kicker { top:calc(50% - 250px); }
+  .wpan { position:absolute; left:50%; top:calc(50% + 196px); width:1440px; margin-left:-720px; opacity:0; animation:fadeUp .45s .8s forwards;
+    filter:drop-shadow(0 12px 28px rgba(0,0,0,.55)); }
+  .wpan .wtop { display:flex; align-items:center; height:84px; background:#0b0e2c; border-left:14px solid #e53935; padding:0 30px; gap:26px; }
+  .wpan .wname { font-size:60px; font-weight:900; color:#fff; letter-spacing:1px; white-space:nowrap; }
+  .wpan .whow { font-size:40px; font-weight:600; color:#c9cff0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wpan .wtag { margin-left:auto; font-size:30px; font-weight:900; letter-spacing:3px; padding:4px 16px; background:#e53935; color:#fff; }
+  .wpan .wstats { display:flex; background:linear-gradient(180deg,#f6f7fb,#d7dce9); }
+  .wpan .wstats div { flex:1; display:flex; flex-direction:column; align-items:center; padding:6px 0 4px; border-right:1px solid #b6bdd1; color:var(--ink); }
+  .wpan .wstats div:last-child { border-right:none; }
+  .wpan .wstats b { font-size:56px; font-weight:900; line-height:1; }
+  .wpan .wstats span { font-size:20px; font-weight:800; letter-spacing:3px; color:#4a5175; }
+  .wpan .wstats div.hi { background:linear-gradient(180deg,var(--p),var(--pd)); color:var(--pt); } .wpan .wstats div.hi span { color:var(--pt); opacity:.85; }
+  .wpan .wfoot { display:flex; height:52px; background:linear-gradient(90deg,#5e0000,#a31515); color:#fff; font-size:28px; font-weight:800; letter-spacing:1px; }
+  .wpan .wfoot span { flex:1; display:flex; align-items:center; justify-content:center; gap:10px; border-right:1px solid rgba(255,255,255,.2); white-space:nowrap; }
+  .wpan .wfoot span:last-child { border-right:none; }
+  .wpan .wfoot i { font-style:normal; font-weight:600; font-size:22px; letter-spacing:2px; opacity:.8; }
+
+  /* match summary */
+  .summ .card-body { padding:14px 26px 6px; }
+  .sblk { margin-bottom:14px; animation:rowIn .45s both; }
+  .sbar { display:flex; align-items:center; height:72px; color:var(--pt); background:linear-gradient(90deg,var(--p),var(--pd)); clip-path:polygon(0 0,100% 0,98.5% 100%,0 100%); }
+  .sbar .slogo { flex:0 0 96px; height:100%; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.18); }
+  .sbar .slogo .lp-circle { width:58px; height:58px; border-width:3px; }
+  .sbar .snm { flex:1; padding-left:22px; font-size:42px; font-weight:900; letter-spacing:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sbar .sov { font-size:28px; font-weight:700; opacity:.85; margin-right:22px; }
+  .sbar .ssc { height:100%; display:flex; align-items:center; padding:0 54px 0 30px; background:#fff; color:var(--ink); font-size:52px; font-weight:900; }
+  .scols { display:grid; grid-template-columns:1fr 1fr; gap:0 26px; padding:6px 0 0; }
+  .scol .sh { font-size:19px; font-weight:800; letter-spacing:3px; color:#8f98cf; padding:2px 12px; }
+  .srow { display:flex; align-items:center; height:46px; padding:0 12px; font-size:31px; font-weight:600; color:#e9ecff; border-bottom:1px solid rgba(255,255,255,.07); }
+  .srow .n { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .srow b { font-size:34px; font-weight:900; min-width:90px; text-align:right; }
+  .srow i { font-style:normal; font-size:24px; color:#9aa3d6; min-width:96px; text-align:right; }
+  .srow.top b { color:var(--a); }
+  .summ .card-foot { justify-content:center; gap:0; height:auto; padding:0; flex-direction:column; background:none; }
+  .summ .sres { display:flex; align-items:center; justify-content:center; height:76px; width:100%; font-size:46px; font-weight:900; letter-spacing:1px; color:var(--ink);
+    background:linear-gradient(180deg,#eef1f8,#c8cee0); }
+  .summ .stoss { height:40px; width:100%; display:flex; align-items:center; justify-content:center; font-size:23px; font-weight:700; letter-spacing:1px;
+    color:#c9cff0; background:#0b0e2c; }
+
   .hype.banner .big { font-size:180px; }
   .hype.banner .sub { top:calc(50% + 140px); }
   @keyframes slam { to { transform:scale(1); opacity:1; } }
@@ -148,7 +189,7 @@
     font-size:64px; font-weight:800; letter-spacing:2px; background:linear-gradient(90deg,#0b0e2c,var(--navy2));
     border:3px solid rgba(255,255,255,.25); border-bottom:none; clip-path:polygon(0 0,97% 0,100% 100%,0 100%); }
   .card-sub { margin-left:70px; height:40px; display:flex; align-items:center; padding-left:110px; font-size:24px; font-weight:700;
-    letter-spacing:3px; background:linear-gradient(90deg,var(--p),var(--pd)); color:var(--pt); }
+    letter-spacing:3px; background:linear-gradient(90deg,var(--p),var(--pd)); color:var(--pt); text-transform:uppercase; }
   .card-body { background:rgba(9,12,38,.93); border:3px solid rgba(255,255,255,.16); border-top:none; padding:8px 0; }
   .row { display:grid; grid-template-columns:var(--cols); align-items:center; height:50px; padding:0 34px; color:#e9ecff;
     font-size:30px; font-weight:600; animation:rowIn .35s both; }
@@ -289,7 +330,8 @@ function crestHTML(t) {
 /* ═══════════════ score bar ═══════════════ */
 let m = new Match(CFG);
 let hasGame = true, hiddenByCmd = false;
-const title = () => (m.cfg.match && m.cfg.match.title) || '';
+const title = () => (m.cfg.match && (m.cfg.match.title || m.cfg.match.comp)) || '';   // PlayHQ games: "Mens 1st Grade · Round 5"
+const sub = (...parts) => parts.filter(Boolean).join(' · ');
 const bugEl = document.getElementById('bug');
 let lastScore = '';
 function renderBug() {
@@ -364,7 +406,7 @@ function battingCard(idx = m.current) {
       <span class="num">${yet ? '' : b.fours}</span><span class="num">${yet ? '' : b.sixes}</span></div>`;
   }).join('');
   const ex = inn.extras, exT = ex.wd + ex.nb + ex.b + ex.lb;
-  return shell(t, t.name.toUpperCase(), `${title()} · BATTING`, '360px 1fr 1fr 90px 90px 80px 80px',
+  return shell(t, t.name.toUpperCase(), sub(title(), 'BATTING'), '360px 1fr 1fr 90px 90px 80px 80px',
     `<div class="row head"><span>BATTER</span><span></span><span></span><span class="num">R</span><span class="num">B</span><span class="num">4s</span><span class="num">6s</span></div>${rows}`,
     `<span>EXTRAS ${exT} <i>(wd ${ex.wd}, nb ${ex.nb}, b ${ex.b}, lb ${ex.lb})</i></span>${totalFoot(inn)}`);
 }
@@ -379,7 +421,7 @@ function bowlingCard(idx = m.current) {
   }).join('');
   const maxW = m.maxWkts(inn);
   const fow = Array.from({ length: maxW }, (_, i) => { const f = inn.fow[i]; return `<div class="fc"><span>${i + 1}</span><b>${f ? f.r : '–'}</b></div>`; }).join('');
-  return shell(t, t.name.toUpperCase(), `BOWLING v ${bt.name.toUpperCase()} · ${title()}`, '1fr 110px 110px 110px 110px 130px 90px 90px',
+  return shell(t, t.name.toUpperCase(), sub(`BOWLING v ${bt.name.toUpperCase()}`, title()), '1fr 110px 110px 110px 110px 130px 90px 90px',
     `<div class="row head"><span>BOWLER</span><span class="num">O</span><span class="num">M</span><span class="num">R</span><span class="num">W</span><span class="num">ECON</span><span class="num">WD</span><span class="num">NB</span></div>${rows}
      <div class="fow"><span class="fl">FOW</span>${fow}</div>`,
     `<span>${esc(bt.short)} BATTING</span>${totalFoot(inn)}`);
@@ -431,9 +473,44 @@ function wormCard() {
     return `<div class="wfow" style="${teamVars(tm)}"><span class="wl">${esc(tm.short)}<i>FOW</i></span>${cells}</div>`;
   }).join('');
   const t = m.team(m.inn.bat);
-  return shell(t, 'SCORE WORM', `${title()} · RUNS PER OVER`, '1fr',
+  return shell(t, 'SCORE WORM', sub(title(), 'RUNS PER OVER'), '1fr',
     `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${g}</svg>${fow}`,
     `<div class="tbars">${bars}</div><div class="wbanner">${esc(wormBanner())}</div>`, 'worm');
+}
+
+/* Match summary: both innings with the top batters and bowlers, then the result. */
+function matchInfoLine() {
+  const mc = m.cfg.match || {};
+  let date = '';
+  if (mc.date) { const d = new Date(mc.date + 'T12:00:00'); if (!isNaN(d)) date = d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }); }
+  return [mc.title, mc.comp, mc.venue, date].filter(Boolean).map(x => String(x).toUpperCase())
+    .filter((x, i, a) => a.indexOf(x) === i).join(' · ');
+}
+function summaryLogo(t) {
+  if (t.logo && logoStyle() !== 'clean') return `<span class="lp-circle"><img src="${esc(origLogo(t))}" alt=""></span>`;
+  return badge(t, 52);
+}
+function summaryCard() {
+  const blocks = m.innings.filter(i => i.legal > 0 || i.runs > 0 || i.wkts > 0).map((inn, k) => {
+    const t = m.team(inn.bat), bwT = m.team(inn.bowl);
+    const bats = inn.batters.filter(b => b.status !== 'yet' && (b.balls > 0 || b.runs > 0 || b.status === 'out'))
+      .sort((a, b) => b.runs - a.runs || a.balls - b.balls).slice(0, 3);
+    const bowls = inn.bowlers.filter(b => b.balls > 0).sort((a, b) => b.wkts - a.wkts || a.runs - b.runs || b.balls - a.balls).slice(0, 3);
+    const notOut = b => b.status === 'batting' || b.status === 'retired' ? '*' : '';
+    const pad = (rows, n) => rows.concat(Array(Math.max(0, n - rows.length)).fill('<div class="srow"></div>')).join('');
+    const batRows = pad(bats.map((b, i) => `<div class="srow ${i === 0 ? 'top' : ''}"><span class="n">${esc(b.name.toUpperCase())}</span><b>${b.runs}${notOut(b)}</b><i>(${b.balls})</i></div>`), 3);
+    const bowlRows = pad(bowls.map((b, i) => `<div class="srow ${i === 0 ? 'top' : ''}" style="${teamVars(bwT)}"><span class="n">${esc(b.name.toUpperCase())}</span><b>${b.wkts}-${b.runs}</b><i>(${oversStr(b.balls)})</i></div>`), 3);
+    return `<div class="sblk" style="${teamVars(t)}animation-delay:${0.25 + k * 0.25}s">
+      <div class="sbar"><span class="slogo">${summaryLogo(t)}</span><span class="snm">${esc(t.name.toUpperCase())}</span>
+        <span class="sov">${oversStr(inn.legal)} OVERS</span><span class="ssc">${inn.runs}-${inn.wkts}</span></div>
+      <div class="scols"><div class="scol"><div class="sh">BATTING</div>${batRows}</div><div class="scol"><div class="sh">BOWLING · ${esc(bwT.short)}</div>${bowlRows}</div></div>
+    </div>`;
+  }).join('');
+  const t = m.team(m.winner || m.innings[0].bat);
+  const res = m.status === 'complete' ? m.result : statusList(m)[0];
+  const toss = (m.cfg.match && m.cfg.match.toss) || '';
+  return shell(t, m.status === 'complete' ? 'MATCH SUMMARY' : 'MATCH SO FAR', matchInfoLine() || 'SCORECARD SUMMARY', '1fr', blocks,
+    `<div class="sres">${esc(res)}</div>${toss ? `<div class="stoss">${esc(toss.toUpperCase())}</div>` : ''}`, 'summ');
 }
 
 /* ═══════════════ hype screens ═══════════════ */
@@ -458,11 +535,30 @@ function milestoneHTML(ev, ms) {
     <div class="sub">${esc(b.name.toUpperCase())}<span>${b.runs}* (${b.balls})</span></div>
     <div class="note">${b.fours} FOUR${b.fours === 1 ? '' : 'S'} · ${b.sixes} SIX${b.sixes === 1 ? '' : 'ES'} · SR ${(b.runs / b.balls * 100).toFixed(0)}</div></div>`;
 }
+// Who's out, how, their innings, and where the wicket left the batting side.
+const BOWLER_WKTS = ['bowled', 'caught', 'lbw', 'stumped', 'hit wicket'];
 function wicketHTML(ev) {
-  const inn = m.inn, t = m.team(inn.bowl), b = ev.wicket.batter;
-  return `<div class="hype wkt" style="${teamVars(t)}"><div class="flash"></div><div class="band"><div class="streaks"></div></div>
-    <div class="kicker">${esc(m.team(inn.bat).short)} ${inn.runs}-${inn.wkts}</div><div class="big">WICKET!</div>
-    <div class="sub">${esc(b.name.toUpperCase())}<em>${esc(ev.wicket.text)}</em><span>${b.runs} (${b.balls})</span></div></div>`;
+  const inn = m.inn, bt = m.team(inn.bat), b = ev.wicket.batter;
+  // This wicket in the fall-of-wickets list (the latest one for this batter), and the one before it.
+  let k = -1; for (let i = inn.fow.length - 1; i >= 0; i--) if (inn.fow[i].name === b.name) { k = i; break; }
+  if (k < 0) k = inn.fow.length - 1;
+  const f = inn.fow[k], pf = inn.fow[k - 1] || { r: 0, b: 0 };
+  const sr = b.balls ? Math.round(b.runs / b.balls * 100) : 0;
+  const tag = b.runs === 0 ? (b.balls <= 1 ? 'GOLDEN DUCK' : 'DUCK') : b.runs >= 100 ? 'CENTURY' : b.runs >= 50 ? 'FIFTY' : '';
+  const bw = BOWLER_WKTS.includes(String(ev.wicket.type).toLowerCase()) ? inn.bowlers[inn.bowler] : null;
+  const foot = [
+    f ? `<span><i>${ordinal(f.w).toUpperCase()} WICKET</i>${f.r}-${f.w} <i>(${oversStr(f.b)} OV)</i></span>` : '',
+    f ? `<span><i>PARTNERSHIP</i>${f.r - pf.r} <i>(${f.b - pf.b} BALL${f.b - pf.b === 1 ? '' : 'S'})</i></span>` : '',
+    bw ? `<span><i>BOWLER</i>${esc(surname(bw.name))} ${bw.wkts}-${bw.runs} <i>(${oversStr(bw.balls)})</i></span>` : '',
+  ].join('');
+  return `<div class="hype wkt" style="${teamVars(bt)}"><div class="flash"></div><div class="band"><div class="streaks"></div></div>
+    <div class="kicker">${esc(bt.short)} ${inn.runs}-${inn.wkts}</div><div class="big">WICKET!</div>
+    <div class="wpan">
+      <div class="wtop"><span class="wname">${esc(b.name.toUpperCase())}</span><span class="whow">${esc(ev.wicket.text)}</span>${tag ? `<span class="wtag">${tag}</span>` : ''}</div>
+      <div class="wstats"><div class="hi"><b>${b.runs}</b><span>RUNS</span></div><div><b>${b.balls}</b><span>BALLS</span></div>
+        <div><b>${b.fours || 0}</b><span>FOURS</span></div><div><b>${b.sixes || 0}</b><span>SIXES</span></div><div><b>${sr}</b><span>STRIKE RATE</span></div></div>
+      ${foot ? `<div class="wfoot">${foot}</div>` : ''}
+    </div></div>`;
 }
 function bannerHTML(t, kicker, big, sub) {
   return `<div class="hype banner" style="${teamVars(t)}"><div class="band"><div class="streaks"></div></div>
@@ -496,7 +592,27 @@ const cards = {
   batting: (idx, ms = T.battingCard) => ({ ms, card: true, render: () => battingCard(idx) }),
   bowling: (idx, ms = T.bowlingCard) => ({ ms, card: true, render: () => bowlingCard(idx) }),
   worm: (ms = T.worm) => ({ ms, card: true, render: wormCard }),
+  summary: (ms = T.summaryCard || 15000) => ({ ms, card: true, render: summaryCard }),
 };
+const resultBanner = () => ({ ms: 7000, render: () => bannerHTML(m.team(m.winner || m.inn.bat), 'MATCH RESULT', m.winner ? `${m.team(m.winner).name.toUpperCase()} WIN` : 'TIED', m.result) });
+
+/* End of match: result → summary → each innings' batting and bowling → worm, round and
+   round until the scorer taps "Back to score bar" (or a new match starts). */
+let summaryMode = false;
+async function runSummary() {
+  if (summaryMode) return;
+  summaryMode = true; breakMode = false; director.clear();
+  const ms = T.endCard || 12000;
+  while (summaryMode) {
+    const tok = director.token;
+    const played = m.innings.map((inn, i) => i).filter(i => m.innings[i].legal > 0 || m.innings[i].runs > 0);
+    director.push(...(m.status === 'complete' ? [resultBanner()] : []), cards.summary(),
+      ...played.flatMap(i => [cards.batting(i, ms), cards.bowling(i, ms)]), cards.worm(ms));
+    await director.idle();
+    if (tok !== director.token) break;
+  }
+  summaryMode = false;
+}
 
 /* What happens after each ball. A PlayHQ feed will call this the same way. */
 let quiet = false;
@@ -515,7 +631,14 @@ function onBall(ev) {
   if (ev.inningsComplete) {
     const bat = m.team(inn.bat);
     if (m.status === 'break') items.push({ ms: 6000, render: () => bannerHTML(bat, `${bat.short} ${inn.runs}-${inn.wkts} (${oversStr(inn.legal)})`, 'INNINGS BREAK', `${m.team(inn.bowl).name.toUpperCase()} NEED ${m.target} TO WIN`) });
-    else items.push({ ms: 7000, render: () => bannerHTML(m.team(m.winner || inn.bat), 'MATCH RESULT', m.winner ? `${m.team(m.winner).name.toUpperCase()} WIN` : 'TIED', m.result) });
+    else if (!prefs.autoCards) items.push(resultBanner());
+    if (m.status === 'complete' && prefs.autoCards) {
+      // Let the last ball's screens play, then roll the end-of-match summary.
+      const tok = director.token;
+      if (items.length) director.push(...items);
+      director.idle().then(() => { if (tok === director.token && m.status === 'complete') runSummary(); });
+      return;
+    }
     if (prefs.autoCards) items.push(cards.batting(m.current), cards.bowling(m.current), cards.worm(12000));
   } else if (ev.overComplete && prefs.autoCards) {
     const n = inn.legal / 6;
@@ -540,10 +663,10 @@ function startLive() {
     const setup = normaliseSetup(live.setup), { state, event } = live.tick;
     m = fromState(setup, state); hasGame = true;
     const seq = event ? event.seq : 0;
-    if (setup.id !== gameId) { gameId = setup.id; lastSeq = seq; director.clear(); lastScore = ''; renderBug(); return; }
+    if (setup.id !== gameId) { gameId = setup.id; lastSeq = seq; summaryMode = breakMode = false; director.clear(); lastScore = ''; renderBug(); return; }
     if (seq === lastSeq) { renderBug(); return; }
     const next = lastSeq != null && seq === lastSeq + 1; lastSeq = seq;
-    if (event && event.kind === 'undo') { director.clear(); lastScore = ''; renderBug(); return; }
+    if (event && event.kind === 'undo') { summaryMode = false; director.clear(); lastScore = ''; renderBug(); return; }
     if (next && event && event.kind === 'ball') onBall(event); else renderBug();
   });
   sync.listen('prefs', p => {
@@ -561,7 +684,7 @@ function startLive() {
 /* Break mode (drinks, lunch…): banner, then batting → bowling → worm on a loop until stopped. */
 let breakMode = false;
 async function runBreak() {
-  breakMode = true; director.clear();
+  breakMode = true; summaryMode = false; director.clear();
   const inn = m.inn, bat = m.team(inn.bat);
   director.push({ ms: 6000, render: () => bannerHTML(bat, `${bat.short} ${m.inn.runs}-${m.inn.wkts} (${oversStr(m.inn.legal)})`, 'DRINKS BREAK', statusList(m)[0]) });
   const ms = T.breakCard || 10000;
@@ -575,10 +698,12 @@ async function runBreak() {
 }
 function handleCmd(kind) {
   if (kind !== 'break') breakMode = false;
+  if (kind !== 'summary') summaryMode = false;
   if (kind === 'hide') { hiddenByCmd = true; director.clear(); return; }
   if (kind === 'show') { hiddenByCmd = false; if (!director.running) setChrome(true); return; }
   if (!hasGame) return;
   if (kind === 'break') { if (!breakMode) runBreak(); return; }
+  if (kind === 'summary') { runSummary(); return; }
   // Manually requested cards replace whatever is showing and stay up until "Back to score bar" (max 1 min)
   const hold = T.manualHold || 60000;
   const card = { batting: () => cards.batting(m.current, hold), bowling: () => cards.bowling(m.current, hold), worm: () => cards.worm(hold) }[kind];
@@ -666,10 +791,11 @@ function buildControls() {
     <button data-a="wkt" class="w">Wicket</button></div>
     <h3>Show now</h3>
     <div class="g"><button data-a="bat">Batting card</button><button data-a="bowl">Bowling card</button>
-    <button data-a="worm" class="w">Score worm</button></div>
+    <button data-a="worm">Score worm</button><button data-a="summ">Summary</button></div>
     <h3>Jump ahead</h3>
     <div class="g"><button data-a="ff5">+5 overs</button><button data-a="ff2">To the chase</button>
-    <button data-a="ffend">Last 2 overs</button><button data-a="restart">Restart</button></div>
+    <button data-a="ffend">Last 2 overs</button><button data-a="ffdone">To the end</button>
+    <button data-a="restart" class="w">Restart</button></div>
     <label>Ball every <b id="spd"></b>s<input id="speed" type="range" min="500" max="8000" step="250"></label>
     <label><input id="bg" type="checkbox" checked> Pretend pitch background</label>`;
   document.body.appendChild(c);
@@ -683,11 +809,12 @@ function buildControls() {
     next: () => sim.step(), dot: () => sim.step(() => ({ runs: 0 })), one: () => sim.step(() => ({ runs: 1 })),
     four: () => sim.step(() => ({ runs: 4 })), six: () => sim.step(() => ({ runs: 6 })),
     wkt: () => sim.step(() => ({ runs: 0, wicket: randomWicket() })),
-    bat: () => director.push(cards.batting(m.current)), bowl: () => director.push(cards.bowling(m.current)), worm: () => director.push(cards.worm()),
+    summ: () => runSummary(), bat: () => director.push(cards.batting(m.current)), bowl: () => director.push(cards.bowling(m.current)), worm: () => director.push(cards.worm()),
     ff5: () => { const i = m.current, tgt = Math.min(m.overs * 6, (Math.floor(m.inn.legal / 6) + 5) * 6); sim.fastForward(() => m.current !== i || m.inn.legal >= tgt); },
     ff2: () => sim.fastForward(() => m.current === 1),
     ffend: () => sim.fastForward(() => m.current === 1 && m.inn.legal >= (m.overs - 2) * 6),
-    restart: () => { director.clear(); simStart(); },
+    ffdone: () => { sim.fastForward(() => m.status === 'complete'); runSummary(); },
+    restart: () => { summaryMode = false; director.clear(); simStart(); },
   };
   c.addEventListener('click', e => { const b = e.target.closest('button'); if (b && act[b.dataset.a]) act[b.dataset.a](b); });
   addEventListener('keydown', e => { if (e.key === 'c') c.style.display = c.style.display === 'none' ? '' : 'none'; });

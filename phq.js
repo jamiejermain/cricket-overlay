@@ -25,7 +25,9 @@
       __typename id title description sportEventStamp eventSection timestamp side period
       ... on ScoreEvent { score } ... on DismissalEvent { icon } ... on ExtraEvent { icon } } }`,
     // api.playhq.com (team names + logos)
-    teams: `query relayTeams($gameId: ID!) { discoverGame(gameID: $gameId) { id
+    teams: `query relayTeams($gameId: ID!) { discoverGame(gameID: $gameId) { id date
+      allocation { time court { name venue { name } } }
+      round { name grade { name season { competition { name } } } }
       home { ... on DiscoverTeam { id name logo { sizes { url dimensions { width } } } } ... on ProvisionalTeam { name } }
       away { ... on DiscoverTeam { id name logo { sizes { url dimensions { width } } } } ... on ProvisionalTeam { name } } } }`,
   };
@@ -223,7 +225,7 @@
 
     const setup = {
       id: meta.setupId, source: 'playhq', game: meta.gameId,
-      match: { title: meta.title || '', oversPerInnings: overs, wideRuns: 1, noBallRuns: 1 },
+      match: { title: meta.title || '', oversPerInnings: overs, wideRuns: 1, noBallRuns: 1, ...(meta.info || {}), toss: tossText(g, teams) },
       teams: {
         home: { ...teams.home, players: playersOf(g, 'home') },
         away: { ...teams.away, players: playersOf(g, 'away') },
@@ -232,6 +234,15 @@
     };
     const state = { v: 1, innings, current, status, result: '', winner: null };
     return { setup, state };
+  }
+  // "WDCC won the toss and chose to bowl"
+  function tossText(g, teams) {
+    const S = g.statistics || {};
+    for (const k of ['home', 'away']) {
+      const t = S[k] && S[k].coinTossWinningResult;
+      if (t && t.preference) return `${teams[k].name} won the toss and chose to ${/BAT/i.test(t.preference) ? 'bat' : 'bowl'}`;
+    }
+    return '';
   }
   function playersOf(g, k) {
     return (((g.statistics || {})[k] || {}).players || []).slice().sort((a, b) => (a.lineupOrder ?? 99) - (b.lineupOrder ?? 99)).map(p => p.name);

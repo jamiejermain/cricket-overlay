@@ -88,7 +88,7 @@ let rp = LS.get(prefsKey, { home: null, away: null, on: true });
 let src = window.opener || null, srcOk = false;
 let teamsPhq = null, game = null, cache = {}, lastState = null, lastSetupJson = '', seq = LS.get('cc.relay.seq', 0);
 let lastBallAt = 0, lastErr = '', running = false, logLines = [];
-let sync = null;
+let sync = null, matchInfo = null;
 // Live connection (opened by the bookmark in the PlayHQ tab).
 let live = false, liveSeen = false, pushed = null, pushes = 0, wakeUp = null, followUp = false;
 
@@ -147,6 +147,12 @@ async function loadTeams() {
     const d = await ask('api', PlayHQ.Q.teams, { gameId: GAME });
     const g = d && d.discoverGame; if (!g) return;
     const pickLogo = t => { const s = ((t.logo && t.logo.sizes) || []).slice().sort((a, b) => b.dimensions.width - a.dimensions.width); return s[0] ? s[0].url : ''; };
+    const v = g.allocation && g.allocation.court, r = g.round;
+    matchInfo = {
+      venue: (v && v.venue && v.venue.name) || (v && v.name) || '',
+      date: g.date || '',
+      comp: r ? [r.grade && r.grade.name, r.name].filter(Boolean).join(' · ') : '',
+    };
     teamsPhq = { home: { name: g.home.name, logo: g.home.logo ? pickLogo(g.home) : '' }, away: { name: g.away.name, logo: g.away.logo ? pickLogo(g.away) : '' } };
   } catch (e) { log('Team names: ' + e.message); }
 }
@@ -194,7 +200,7 @@ async function poll() {
 function publishFrom(g) {
   const teams = { home: teamFor('home'), away: teamFor('away') };
   const title = / v /.test(qp.get('title') || '') ? qp.get('title') : '';
-  const { setup, state } = PlayHQ.build(g, cache, teams, { gameId: GAME, setupId: 'phq-' + GAME, title });
+  const { setup, state } = PlayHQ.build(g, cache, teams, { gameId: GAME, setupId: 'phq-' + GAME, title, info: matchInfo });
   // Result text, worked out the same way the scorer does.
   if (state.status === 'complete' && state.innings.length === 2) { const m = fromState(setup, state); m.computeResult(); state.result = m.result; state.winner = m.winner; }
   else if (state.status === 'complete') state.result = 'MATCH COMPLETE';

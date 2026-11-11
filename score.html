@@ -476,6 +476,7 @@ function renderSetup() {
   app.innerHTML = `${cloudBanner()}
     <section class="card"><h2>New match</h2>
       <label>Match title <span class="hint">shown on the stream</span><input data-m="title" value="${esc(d.match.title)}" placeholder="U12 Division 2 · Round 5"></label>
+      <label>Ground <span class="hint">optional, shown on the match summary</span><input data-m="venue" value="${esc(d.match.venue || '')}" placeholder="Kaleen Oval"></label>
       <div class="row3"><label>Overs<input type="number" inputmode="numeric" data-m="oversPerInnings" value="${d.match.oversPerInnings}"></label>
         <label>Wide runs<input type="number" inputmode="numeric" data-m="wideRuns" value="${d.match.wideRuns}"></label>
         <label>No-ball runs<input type="number" inputmode="numeric" data-m="noBallRuns" value="${d.match.noBallRuns}"></label></div>
@@ -608,6 +609,7 @@ function startMatch() {
     if (!t.short) t.short = t.name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase();
   }
   draft.match.oversPerInnings = Math.max(1, +draft.match.oversPerInnings || 20);
+  const now = new Date(); draft.match.date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   draft.match.wideRuns = +draft.match.wideRuns || 0; draft.match.noBallRuns = +draft.match.noBallRuns || 0;
   saveDraft();
   const setup = { ...deep(draft), id: rid(8), created: Date.now() };
@@ -669,14 +671,15 @@ function renderScore() {
         <button class="opt brk ${breakOn ? 'on' : ''}" data-act="break">${breakOn ? '■ End break – back to score bar' : '☕ Drinks / break<small>batting → bowling → worm, 10s each, on repeat</small>'}</button>
         <div class="opts">
           <button class="opt" data-cmd="batting">Batting card</button><button class="opt" data-cmd="bowling">Bowling card</button>
-          <button class="opt" data-cmd="worm">Score worm</button><button class="opt" data-cmd="clear">Back to score bar</button>
+          <button class="opt" data-cmd="worm">Score worm</button><button class="opt" data-cmd="summary">Match summary<small>then every scorecard, on repeat</small></button>
+          <button class="opt" data-cmd="clear">Back to score bar</button>
           <button class="opt" data-cmd="hide">Hide overlay</button><button class="opt" data-cmd="show">Show overlay</button>
         </div>
         <p class="hint">Cards you show here stay up until you tap “Back to score bar” (max 1 min).</p>
         <div class="toggle"><span>Logo style<small>how team logos sit on the stream</small></span></div>
         <div class="seg seg3">${[['circle', 'Circle'], ['fill', 'Fill'], ['clean', 'Cut-out']].map(([v, l]) =>
           `<button data-logostyle="${v}" class="${prefs.logoStyle === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-        <label class="toggle"><span>Auto cards at end of over<small>batting + bowling, worm every ${esc(String(5))}th over</small></span><input type="checkbox" data-pref="autoCards" ${prefs.autoCards ? 'checked' : ''}></label>
+        <label class="toggle"><span>Auto cards at end of over<small>batting + bowling, worm every ${esc(String(5))}th over, match summary at the end</small></span><input type="checkbox" data-pref="autoCards" ${prefs.autoCards ? 'checked' : ''}></label>
         <label class="toggle"><span>Auto FOUR / SIX / WICKET screens<small>plus FIFTY and CENTURY</small></span><input type="checkbox" data-pref="autoHype" ${prefs.autoHype ? 'checked' : ''}></label>
       </section>
     </div>

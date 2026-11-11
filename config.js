@@ -34,17 +34,19 @@ window.OVERLAY_CONFIG = {
   // How long each graphic stays up (milliseconds)
   timings: {
     hype: 5000,          // FOUR! / SIX!
-    wicket: 5000,
+    wicket: 7000,        // WICKET! with the batter's innings and the fall of wicket
     battingCard: 10000,  // end of over
     bowlingCard: 10000,  // end of over
     worm: 20000,         // end of over, replaces the two cards…
     wormEvery: 5,        // …every 5th over
     breakCard: 10000,    // each card during a drinks break (Break button in the scorer)
+    summaryCard: 15000,  // end of match: the summary (both innings, top batters and bowlers)…
+    endCard: 12000,      // …then each scorecard and the worm, on a loop until "Back to score bar"
     manualHold: 60000,   // cards shown from the scorer stay up until "Back to score bar", or this long
   },
   hype: { fours: true, sixes: true, wickets: true, milestones: true },  // milestones = FIFTY! / CENTURY!
 
-  showLiveTag: true,       // "● LIVE" tag in the top-left corner
+  showLiveTag: false,      // "● LIVE" tag in the top-left corner (off: viewers know it's live)
   statusRotateMs: 6000,    // score bar status line cycles: status → run rate → partnership
 
   demo: { ballIntervalMs: 2500 },  // simulated match speed
