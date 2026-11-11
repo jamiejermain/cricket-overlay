@@ -544,7 +544,7 @@ function wicketHTML(ev) {
   if (k < 0) k = inn.fow.length - 1;
   const f = inn.fow[k], pf = inn.fow[k - 1] || { r: 0, b: 0 };
   const sr = b.balls ? Math.round(b.runs / b.balls * 100) : 0;
-  const tag = b.runs === 0 ? (b.balls <= 1 ? 'GOLDEN DUCK' : 'DUCK') : b.runs >= 100 ? 'CENTURY' : b.runs >= 50 ? 'FIFTY' : '';
+  const tag = b.runs >= 100 ? 'CENTURY' : b.runs >= 50 ? 'FIFTY' : '';
   const bw = BOWLER_WKTS.includes(String(ev.wicket.type).toLowerCase()) ? inn.bowlers[inn.bowler] : null;
   const foot = [
     f ? `<span><i>${ordinal(f.w).toUpperCase()} WICKET</i>${f.r}-${f.w} <i>(${oversStr(f.b)} OV)</i></span>` : '',
