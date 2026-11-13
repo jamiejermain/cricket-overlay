@@ -4,7 +4,7 @@
 |---|---|
 | `score.html` | Live scorer for a phone, foldable or iPad. Set up teams (colours, logos, players), score ball by ball, control the overlay. |
 | `overlay.html?ch=CODE` | The overlay for PRISM's Web widget. Follows whatever is published on that channel. Get the exact link from the scorer's Settings. |
-| `overlay.html?demo` | Pretend match with test controls. |
+| `overlay.html?demo` | Pretend match with test controls, using the teams set up in the scorer on the same device (`?demo=sample` for the sample teams). |
 | `relay.html` | Follows a game on PlayHQ's live scoring and publishes it to the channel instead of the scorer (see below). |
 
 ## PlayHQ relay (no webhook needed)

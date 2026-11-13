@@ -243,6 +243,7 @@
   #ctl { position:fixed; right:12px; top:12px; width:230px; z-index:100; background:rgba(12,14,30,.88); color:#fff; border-radius:10px;
     padding:12px; font:14px/1.3 system-ui,sans-serif; box-shadow:0 6px 24px rgba(0,0,0,.4); }
   #ctl h3 { margin:0 0 8px; font-size:13px; letter-spacing:1px; text-transform:uppercase; color:#9aa3d6; }
+  #ctl .src { margin:-2px 0 10px; font-size:12px; line-height:1.4; color:#c8cdf0; } #ctl .src a { color:#7cc4ff; }
   #ctl .g { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
   #ctl button { font:600 13px system-ui,sans-serif; padding:7px 4px; border:0; border-radius:6px; background:#2b3159; color:#fff; cursor:pointer; }
   #ctl button:hover { background:#3b4380; }
@@ -741,8 +742,22 @@ function randomBall() {
   if (r < 0.94) return { runs: 4 };
   return { runs: 6 };
 }
+/* Demo teams: the match set up in the scorer on this device (same site, same browser), unless ?demo=sample. */
+function savedSetup() {
+  if (params.get('demo') === 'sample') return null;
+  const get = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+  for (const s of [get('cc.game') && get('cc.game').setup, get('cc.lastSetup')]) {
+    if (!s || !s.teams || !s.teams.home || !s.teams.away) continue;
+    const t = normaliseSetup(JSON.parse(JSON.stringify(s))).teams;
+    if (!['home', 'away'].every(k => t[k].name && t[k].players.length >= 2)) continue;
+    for (const k of ['home', 'away']) t[k].short = t[k].short || t[k].name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase();
+    return { ...CFG, ...s, teams: t, match: { ...CFG.match, ...(s.match || {}) } };
+  }
+  return null;
+}
+const demoSetup = DEMO ? savedSetup() : null;
 function simStart() {
-  m = new Match(CFG);
+  m = new Match(demoSetup || CFG);
   m.apply({ t: 'open', striker: 0, nonStriker: 1, bowler: chooseBowler() });
   lastScore = ''; renderBug();
 }
@@ -785,6 +800,7 @@ function buildControls() {
   document.body.classList.add('field');
   const c = document.createElement('div'); c.id = 'ctl';
   c.innerHTML = `<button class="hide" data-a="hide" title="Hide (press C to show)">✕</button><h3>Test match</h3>
+    <p class="src">${demoSetup ? `Your teams from the scorer: <b>${esc(demoSetup.teams.home.name)} v ${esc(demoSetup.teams.away.name)}</b> · <a href="?demo=sample">use sample teams</a>` : `Sample teams${params.get('demo') === 'sample' ? ' · <a href="?demo">use my saved teams</a>' : ' (set up a match in the scorer on this device to use yours)'}`}</p>
     <div class="g"><button data-a="play">Pause</button><button data-a="next">Next ball</button>
     <button data-a="dot">Dot ball</button><button data-a="one">Single</button>
     <button data-a="four">FOUR</button><button data-a="six">SIX</button>
