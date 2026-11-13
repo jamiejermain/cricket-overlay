@@ -86,6 +86,7 @@ let library = LS.get('cc.library', {});
 const prefsKey = 'cc.relay.' + GAME;
 let rp = LS.get(prefsKey, { home: null, away: null, on: true });
 rp.pre = rp.pre || { tossWin: '', tossChose: 'bat', openers: '' };
+rp.short = rp.short || { home: '', away: '' };   // initials typed in the relay (e.g. WBHS)
 let src = window.opener || null, srcOk = false;
 let teamsPhq = null, game = null, cache = {}, lastState = null, lastSetupJson = '', seq = LS.get('cc.relay.seq', 0);
 let lastBallAt = 0, lastErr = '', running = false, logLines = [];
@@ -135,6 +136,10 @@ function guessLib(name) {
 }
 const DEFAULT = { home: ['#f47b20', '#ffd166'], away: ['#1f4fd1', '#7cc4ff'] };
 function teamFor(k) {
+  const t = teamBase(k), s = (rp.short[k] || '').trim().toUpperCase().slice(0, 5);
+  return s ? { ...t, short: s } : t;
+}
+function teamBase(k) {
   const p = teamsPhq && teamsPhq[k] || { name: k === 'home' ? 'Home' : 'Away' };
   const pick = rp[k] === undefined || rp[k] === null ? guessLib(p.name) : rp[k];
   if (pick && library[pick]) { const t = library[pick]; return { name: t.name, short: t.short || t.name.slice(0, 3).toUpperCase(), primary: t.primary, accent: t.accent, logo: t.logo || '', logoOriginal: t.logoOriginal || t.logo || '', keeper: 0 }; }
@@ -361,7 +366,9 @@ function renderTeams() {
     const t = teamFor(k), p = teamsPhq && teamsPhq[k];
     const sel = rp[k] === undefined || rp[k] === null ? guessLib(p && p.name) : rp[k];
     return `<div class="team"><span class="logo" style="--tp:${t.primary};--ta:${t.accent}">${t.logo ? `<img src="${esc(t.logo)}" alt="">` : esc(t.short)}</span>
-      <div><div style="font-weight:700">${esc(p ? p.name : '…')}</div><select data-team="${k}">${opts(sel || '')}</select></div></div>`;
+      <div><div style="font-weight:700">${esc(p ? p.name : '…')}</div><select data-team="${k}">${opts(sel || '')}</select>
+        <div class="row" style="margin-top:6px;gap:8px;align-items:center"><span class="muted">Initials</span>
+        <input type="text" data-short="${k}" value="${esc(rp.short[k] || '')}" placeholder="${esc(teamBase(k).short)}" maxlength="5" style="width:110px;text-transform:uppercase"></div></div></div>`;
   }).join('');
 }
 function renderStatus() {
@@ -407,6 +414,11 @@ const preInput = e => {
   clearTimeout(preInput.t); preInput.t = setTimeout(() => { if (preMode) publishPre(); }, e.type === 'input' ? 700 : 0);
 };
 document.addEventListener('input', preInput);
+document.addEventListener('input', e => {
+  const f = e.target.closest('[data-short]'); if (!f) return;
+  rp.short[f.dataset.short] = f.value.replace(/[^a-z0-9]/gi, ''); LS.set(prefsKey, rp);
+  clearTimeout(f._t); f._t = setTimeout(() => { lastState = null; lastSetupJson = ''; if (preMode) publishPre(); }, 800);   // republish with the new initials
+});
 document.addEventListener('change', preInput);
 document.addEventListener('change', e => {
   const s = e.target.closest('select[data-team]'); if (!s) return;
