@@ -85,11 +85,14 @@ if (qp.get('ch') && qp.get('k')) {                   // opened from the scorer's
 let library = LS.get('cc.library', {});
 const prefsKey = 'cc.relay.' + GAME;
 let rp = LS.get(prefsKey, { home: null, away: null, on: true });
+rp.pre = rp.pre || { tossWin: '', tossChose: 'bat', openers: '' };
 let src = window.opener || null, srcOk = false;
 let teamsPhq = null, game = null, cache = {}, lastState = null, lastSetupJson = '', seq = LS.get('cc.relay.seq', 0);
 let lastBallAt = 0, lastErr = '', running = false, logLines = [];
 let sync = null, matchInfo = null;
 // Live connection (opened by the bookmark in the PlayHQ tab).
+// Before PlayHQ scoring starts: a pre-game screen (teams, toss, openers) on the overlay.
+let preMode = false, preSent = '';
 let live = false, liveSeen = false, pushed = null, pushes = 0, wakeUp = null, followUp = false;
 
 function log(s) { logLines.unshift(new Date().toLocaleTimeString() + '  ' + s); logLines = logLines.slice(0, 30); const el = $('#log'); if (el) el.textContent = logLines.join('\n'); }
@@ -197,6 +200,17 @@ async function poll() {
   return publishFrom(game);
 }
 
+function tossLine() {
+  const w = rp.pre.tossWin; if (!w) return '';
+  return `${teamFor(w).name} won the toss and chose to ${rp.pre.tossChose === 'bowl' ? 'bowl' : 'bat'}`;
+}
+function publishPre(force) {
+  if (!rp.on) return;
+  const title = / v /.test(qp.get('title') || '') ? qp.get('title') : '';
+  const pre = { teams: { home: teamFor('home'), away: teamFor('away') }, info: matchInfo || {}, title, toss: tossLine(), openers: rp.pre.openers.trim() };
+  const j = JSON.stringify(pre); if (j === preSent && !force) return;
+  preSent = j; sync.put('live', { pre: { ...pre, at: Date.now() } }); log('Pre-game screen sent to the overlay');
+}
 function publishFrom(g) {
   const teams = { home: teamFor('home'), away: teamFor('away') };
   const title = / v /.test(qp.get('title') || '') ? qp.get('title') : '';
@@ -231,7 +245,18 @@ async function loop() {
     try {
       if (!src || src.closed) throw new Error('nosrc');
       if (!teamsPhq) { await loadTeams(); renderTeams(); }
-      const ev = await poll(); srcOk = true;
+      let ev = null;
+      try { ev = await poll(); }
+      catch (e) {
+        // Game not started on PlayHQ yet: show the pre-game screen instead of an error.
+        if (!/not electronically scored|no live data/i.test(e.message)) throw e;
+        if (!preMode) log("PlayHQ scoring hasn't started yet");
+        preMode = true; srcOk = true; lastErr = ''; fails = 0; publishPre();
+        pill(rp.on ? 'ok' : 'wait', rp.on ? 'Pre-game screen on' : 'Paused'); renderStatus();
+        await tick(POLL_MS * 2); continue;
+      }
+      if (preMode) { preMode = false; log('PlayHQ scoring has started'); }
+      srcOk = true;
       // A 30-second backup check found a ball the live connection never told us
       // about: it has gone quiet without closing. Reconnect, and check every 4 s
       // until it's back.
@@ -272,7 +297,7 @@ document.addEventListener('visibilitychange', keepAwake);
 /* ── screens ── */
 function bookmarkletCode() {
   const O = location.origin, P = O + location.pathname;
-  const js = `(()=>{const P=${JSON.stringify(P)};const m=location.pathname.match(/game-centre\\/([0-9a-z]+)/i);if(!/playhq\\.com$/.test(location.hostname)||!m){alert('Open the game on playhq.com first: the page with the Scorecard and Ball-by-ball tabs.');return}const live=(s,o,d,n)=>{if(s.closed)return;const ws=new WebSocket('wss://spectator.playhq.com/graphql?tenant=ca','graphql-transport-ws');if(window.__ccWs)window.__ccWs.close();window.__ccWs=ws;let ok=0;const tell=m=>{try{s.postMessage(m,o)}catch(_){}};ws.onopen=()=>ws.send('{"type":"connection_init","payload":{}}');ws.onmessage=m=>{if(s.closed)return ws.close();const x=JSON.parse(m.data);if(x.type==='connection_ack'){ok=1;ws.send(JSON.stringify({id:'1',type:'subscribe',payload:{query:d.query,variables:d.variables}}));tell({t:'phq-live',on:true})}else if(x.type==='ping')ws.send('{"type":"pong"}');else if(x.type==='next')tell({t:'phq-push',data:x.payload&&x.payload.data});else if(x.type==='error')tell({t:'phq-live',on:false,error:JSON.stringify(x.payload).slice(0,200)})};ws.onclose=()=>{if(window.__ccWs!==ws)return;window.__ccWs=null;tell({t:'phq-live',on:false});const w=ok?2:Math.min(n*2,60);setTimeout(()=>live(s,o,d,w),w*1000)}};if(!window.__ccRelay){window.__ccRelay=1;addEventListener('message',async e=>{const d=e.data;if(e.origin!==${JSON.stringify(O)}||!d)return;if(d.t==='phq-sub')return live(e.source,e.origin,d,2);if(d.t!=='phq')return;const u=d.ep==='api'?'https://api.playhq.com/graphql':'https://spectator.playhq.com/graphql';let r;try{const x=await fetch(u,{method:'POST',headers:{'content-type':'application/json','x-phq-tenant':'ca',tenant:'ca'},body:JSON.stringify({query:d.query,variables:d.variables})});r={ok:x.ok,status:x.status,json:await x.json()}}catch(err){r={ok:false,error:String(err)}}e.source.postMessage(Object.assign({t:'phq-r',id:d.id},r),e.origin)})}const w=window.open(P+'?game='+m[1]+'&title='+encodeURIComponent(document.title.split(' - ')[0].split(',')[0]),'cricketrelay','width=460,height=820');if(!w)alert('Allow pop-ups for playhq.com, then tap the bookmark again.')})()`;
+  const js = `(()=>{const P=${JSON.stringify(P)};const m=location.pathname.match(/game-centre\\/([0-9a-z]+)/i);if(!/playhq\\.com$/.test(location.hostname)||!m){alert('Open the game on playhq.com first: the page with the Scorecard and Ball-by-ball tabs.');return}const T={'new-zealand-cricket':'nzc','cricket-australia':'ca'}[location.pathname.split('/')[1]]||'ca';const live=(s,o,d,n)=>{if(s.closed)return;const ws=new WebSocket('wss://spectator.playhq.com/graphql?tenant='+T,'graphql-transport-ws');if(window.__ccWs)window.__ccWs.close();window.__ccWs=ws;let ok=0;const tell=m=>{try{s.postMessage(m,o)}catch(_){}};ws.onopen=()=>ws.send('{"type":"connection_init","payload":{}}');ws.onmessage=m=>{if(s.closed)return ws.close();const x=JSON.parse(m.data);if(x.type==='connection_ack'){ok=1;ws.send(JSON.stringify({id:'1',type:'subscribe',payload:{query:d.query,variables:d.variables}}));tell({t:'phq-live',on:true})}else if(x.type==='ping')ws.send('{"type":"pong"}');else if(x.type==='next')tell({t:'phq-push',data:x.payload&&x.payload.data});else if(x.type==='error')tell({t:'phq-live',on:false,error:JSON.stringify(x.payload).slice(0,200)})};ws.onclose=()=>{if(window.__ccWs!==ws)return;window.__ccWs=null;tell({t:'phq-live',on:false});const w=ok?2:Math.min(n*2,60);setTimeout(()=>live(s,o,d,w),w*1000)}};if(!window.__ccRelay){window.__ccRelay=1;addEventListener('message',async e=>{const d=e.data;if(e.origin!==${JSON.stringify(O)}||!d)return;if(d.t==='phq-sub')return live(e.source,e.origin,d,2);if(d.t!=='phq')return;const u=d.ep==='api'?'https://api.playhq.com/graphql':'https://spectator.playhq.com/graphql';let r;try{const x=await fetch(u,{method:'POST',headers:{'content-type':'application/json','x-phq-tenant':T,tenant:T},body:JSON.stringify({query:d.query,variables:d.variables})});r={ok:x.ok,status:x.status,json:await x.json()}}catch(err){r={ok:false,error:String(err)}}e.source.postMessage(Object.assign({t:'phq-r',id:d.id},r),e.origin)})}const w=window.open(P+'?game='+m[1]+'&title='+encodeURIComponent(document.title.split(' - ')[0].split(',')[0]),'cricketrelay','width=460,height=820');if(!w)alert('Allow pop-ups for playhq.com, then tap the bookmark again.')})()`;
   return 'javascript:' + encodeURIComponent(js).replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%2F/g, '/').replace(/%3D/g, '=').replace(/%3B/g, ';');
 }
 function needLink() {
@@ -288,6 +313,7 @@ function render() {
   if (!GAME || !src) { app.innerHTML = setupScreen(); return; }
   app.innerHTML = `
     <section class="card" id="status"></section>
+    <section class="card" id="precard"></section>
     <section class="card"><h3>Team colours &amp; logos</h3><div id="teams"></div>
       <p class="muted">Pick a team you saved in the scorer to use its colours and logo. Otherwise PlayHQ's name and logo are used.</p></section>
     <section class="card"><h3>While it's running</h3>
@@ -314,6 +340,20 @@ function setupScreen() {
     <li>Tap the <b>📡 Cricket relay</b> bookmark. This window opens next to it and starts sending.</li>
     <li>Your PRISM overlay link stays the same:<br><span class="muted" style="word-break:break-all">${esc(ov)}</span></li></ol></section>`;
 }
+function renderPre() {
+  const el = $('#precard'); if (!el) return;
+  if (!preMode) { el.style.display = 'none'; return; }
+  if (el.dataset.on) return;   // don't redraw while typing
+  el.dataset.on = 1; el.style.display = '';
+  const nm = k => esc(teamFor(k).name);
+  el.innerHTML = `<h3>Pre-game screen</h3>
+    <label class="muted">Toss</label>
+    <div class="row"><select data-pre="tossWin"><option value="">Not known yet</option><option value="home" ${rp.pre.tossWin === 'home' ? 'selected' : ''}>${nm('home')}</option><option value="away" ${rp.pre.tossWin === 'away' ? 'selected' : ''}>${nm('away')}</option></select>
+      <select data-pre="tossChose"><option value="bat" ${rp.pre.tossChose !== 'bowl' ? 'selected' : ''}>chose to bat</option><option value="bowl" ${rp.pre.tossChose === 'bowl' ? 'selected' : ''}>chose to bowl</option></select></div>
+    <label class="muted" style="display:block;margin-top:10px">Opening batters</label>
+    <input type="text" data-pre="openers" value="${esc(rp.pre.openers)}" placeholder="e.g. Sam Smith & Alex Jones">
+    <p class="muted">Changes go to the overlay straight away.</p>`;
+}
 function renderTeams() {
   const el = $('#teams'); if (!el) return;
   const opts = sel => `<option value="">PlayHQ name &amp; logo</option>` + Object.keys(library).sort().map(n => `<option ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('');
@@ -331,6 +371,7 @@ function renderStatus() {
       : 'Go back to the game on playhq.com (reload it if it looks stuck) and tap the <b>📡 Cricket relay</b> bookmark again.';
     el.innerHTML = `<div class="bad"><b>${esc(lastErr)}.</b> ${fix}</div>`; return;
   }
+  if (preMode) { el.innerHTML = `<p><b>PlayHQ scoring hasn't started yet.</b></p><p class="muted">The overlay is showing the pre-game screen. It switches to the score bar by itself at the first ball.</p>`; renderPre(); return; }
   if (!lastState) { el.innerHTML = `<p class="muted">Connecting to PlayHQ…</p>`; return; }
   const s = lastState, i = s.innings[s.current], bat = teamFor(i.bat), bowl = teamFor(i.bowl);
   const st = i.batters[i.striker], ns = i.batters[i.nonStriker], bw = i.bowlers[i.bowler];
@@ -360,9 +401,16 @@ document.addEventListener('click', e => {
   if (a === 'copy') { const t = $('#code'); t.select(); navigator.clipboard ? navigator.clipboard.writeText(t.value).then(() => b.textContent = 'Copied ✓') : document.execCommand('copy'); }
   if (a === 'pause' || a === 'resume') { rp.on = a === 'resume'; LS.set(prefsKey, rp); if (rp.on) { lastState = null; lastSetupJson = ''; } renderStatus(); }
 });
+const preInput = e => {
+  const f = e.target.closest('[data-pre]'); if (!f) return;
+  rp.pre[f.dataset.pre] = f.value; LS.set(prefsKey, rp);
+  clearTimeout(preInput.t); preInput.t = setTimeout(() => { if (preMode) publishPre(); }, e.type === 'input' ? 700 : 0);
+};
+document.addEventListener('input', preInput);
+document.addEventListener('change', preInput);
 document.addEventListener('change', e => {
   const s = e.target.closest('select[data-team]'); if (!s) return;
-  rp[s.dataset.team] = s.value || ''; LS.set(prefsKey, rp); renderTeams(); lastState = null; lastSetupJson = '';   // republish with the new look
+  rp[s.dataset.team] = s.value || ''; LS.set(prefsKey, rp); renderTeams(); lastState = null; lastSetupJson = ''; if (preMode) { const c = $('#precard'); if (c) delete c.dataset.on; renderPre(); publishPre(); }   // republish with the new look
 });
 document.addEventListener('dragstart', e => { if (e.target.id === 'bm') e.dataTransfer.setData('text/uri-list', bookmarkletCode()); });
 

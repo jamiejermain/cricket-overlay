@@ -103,6 +103,26 @@
   @keyframes pop { from { transform:scale(0); } to { transform:scale(1); } }
   @keyframes flash { 0%{filter:brightness(2.2)} 100%{filter:brightness(1)} }
 
+  /* ── pre-game screen (relay, before PlayHQ scoring starts) ── */
+  #pre { position:absolute; inset:0; z-index:5; display:flex; align-items:center; justify-content:center; background:rgba(5,8,30,.35); }
+  #pre.hidden { display:none; }
+  .pg { width:1500px; animation:cardIn .6s cubic-bezier(.2,.9,.2,1) both; filter:drop-shadow(0 20px 40px rgba(0,0,0,.5)); }
+  .pg-top { height:84px; display:flex; align-items:center; justify-content:center; gap:22px; color:#fff; font-size:44px; font-weight:800; letter-spacing:6px;
+    background:linear-gradient(90deg,#0b0e2c,var(--navy2),#0b0e2c); clip-path:polygon(3% 0,97% 0,100% 100%,0 100%); }
+  .pg-top i { width:16px; height:16px; border-radius:50%; background:#ff3b3b; box-shadow:0 0 14px #ff3b3b; animation:blink 1.6s infinite; }
+  @keyframes blink { 50% { opacity:.35; } }
+  .pg-teams { display:grid; grid-template-columns:1fr 150px 1fr; height:340px; }
+  .pg-t { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:var(--pt);
+    background:linear-gradient(180deg,var(--p),var(--pd)); border-bottom:8px solid var(--a); }
+  .pg-t .crest-b img, .pg-t .crest-b svg { display:block; }
+  .pg-t .nm { font-size:64px; font-weight:900; letter-spacing:1px; text-transform:uppercase; text-align:center; line-height:1; padding:0 24px; }
+  .pg-v { display:flex; align-items:center; justify-content:center; background:var(--navy); color:#fff; font-size:76px; font-weight:900; font-style:italic; }
+  .pg-info { background:#f6f7fb; color:var(--ink); text-align:center; padding:18px 30px; font-size:34px; font-weight:800; letter-spacing:2px; text-transform:uppercase; }
+  .pg-toss { background:#0b0e2c; color:#fff; text-align:center; padding:16px 30px; font-size:38px; font-weight:800; letter-spacing:1px; text-transform:uppercase; }
+  .pg-toss b { color:#ffd166; }
+  .pg-open { background:linear-gradient(180deg,var(--navy2),var(--navy)); color:#fff; display:flex; align-items:center; justify-content:center; gap:26px; padding:16px 30px; font-size:40px; font-weight:800; text-transform:uppercase; }
+  .pg-open span { font-size:26px; letter-spacing:3px; color:#9aa3d6; }
+
   /* ── full-screen takeovers ── */
   #layer { position:absolute; inset:0; z-index:10; pointer-events:none; }
   #layer.out { animation:out .45s forwards; }
@@ -267,6 +287,7 @@
 <div id="stage">
   <div class="live" id="live"></div>
   <div class="bug" id="bug"></div>
+  <div id="pre" class="hidden"></div>
   <div id="layer"></div>
 </div>
 
@@ -673,6 +694,8 @@ function startLive() {
   const sync = new CricketSync({ ch: params.get('ch'), api: params.has('local') ? '' : (params.get('api') ?? undefined) });
   let gameId = null, lastSeq = null;
   sync.listen('live', live => {
+    if (live && live.pre && !live.setup) { hasGame = false; director.clear(); setChrome(false); showPre(live.pre); return; }
+    showPre(null);
     if (!live || !live.setup || !live.tick || !live.tick.state) { hasGame = false; director.clear(); return; }
     const setup = normaliseSetup(live.setup), { state, event } = live.tick;
     m = fromState(setup, state); hasGame = true;
@@ -694,6 +717,26 @@ function startLive() {
     if (!c || id === seenCmd) return;
     seenCmd = id; handleCmd(c.kind);
   });
+}
+/* Pre-game screen: sent by the PlayHQ relay until the first ball is scored. */
+let preJson = '';
+function showPre(p) {
+  const el = document.getElementById('pre');
+  if (!p) { if (preJson) { el.classList.add('hidden'); el.innerHTML = ''; preJson = ''; } return; }
+  const j = JSON.stringify({ ...p, at: 0 }); if (j === preJson) return; preJson = j;
+  const { home, away } = p.teams, i = p.info || {};
+  let date = ''; try { if (i.date) date = new Date(i.date + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }); } catch (e) {}
+  const info = [...new Set([p.title && !/ v /.test(p.title) ? p.title : '', i.comp, i.venue, date].filter(Boolean))].join('  ·  ');
+  const side = t => `<div class="pg-t" style="${teamVars(t)}"><div class="crest-b">${badge(t, 170)}</div><div class="nm">${esc(t.name)}</div></div>`;
+  const toss = p.toss ? p.toss.replace(/^(.*?) won the toss/i, (_, n) => `<b>${esc(n)}</b> won the toss`) : '';
+  const opens = String(p.openers || '').split(/\s*(?:&|,|\band\b|\+|\/)\s*/i).filter(Boolean).map(esc).join(' &nbsp;&amp;&nbsp; ');
+  el.innerHTML = `<div class="pg">
+    <div class="pg-top"><i></i>COMING UP<i></i></div>
+    <div class="pg-teams">${side(home)}<div class="pg-v">V</div>${side(away)}</div>
+    ${info ? `<div class="pg-info">${esc(info)}</div>` : ''}
+    ${toss ? `<div class="pg-toss">${toss}</div>` : ''}
+    ${opens ? `<div class="pg-open"><span>OPENING BATTERS</span>${opens}</div>` : ''}</div>`;
+  el.classList.remove('hidden');
 }
 /* Break mode (drinks, lunch…): banner, then batting → bowling → worm on a loop until stopped. */
 let breakMode = false;
