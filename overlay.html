@@ -244,6 +244,7 @@
     padding:12px; font:14px/1.3 system-ui,sans-serif; box-shadow:0 6px 24px rgba(0,0,0,.4); }
   #ctl h3 { margin:0 0 8px; font-size:13px; letter-spacing:1px; text-transform:uppercase; color:#9aa3d6; }
   #ctl .src { margin:-2px 0 10px; font-size:12px; line-height:1.4; color:#c8cdf0; } #ctl .src a { color:#7cc4ff; }
+  #ctl .src .share { display:block; width:100%; margin-top:8px; background:#2f6fe0; }
   #ctl .g { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:8px; }
   #ctl button { font:600 13px system-ui,sans-serif; padding:7px 4px; border:0; border-radius:6px; background:#2b3159; color:#fff; cursor:pointer; }
   #ctl button:hover { background:#3b4380; }
@@ -743,19 +744,51 @@ function randomBall() {
   return { runs: 6 };
 }
 /* Demo teams: the match set up in the scorer on this device (same site, same browser), unless ?demo=sample. */
+function fillSetup(s) {
+  if (!s || !s.teams || !s.teams.home || !s.teams.away) return null;
+  const t = normaliseSetup(JSON.parse(JSON.stringify(s))).teams;
+  if (!['home', 'away'].every(k => t[k].name && t[k].players.length >= 2)) return null;
+  for (const k of ['home', 'away']) t[k].short = t[k].short || t[k].name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase();
+  return { ...CFG, ...s, teams: t, match: { ...CFG.match, ...(s.match || {}) } };
+}
+/* Shareable demo links carry the teams in the #fragment (never sent to any server), deflated + base64url. */
+const b64u = {
+  enc: bytes => { let x = ''; for (const c of bytes) x += String.fromCharCode(c); return btoa(x).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); },
+  dec: str => Uint8Array.from(atob(str.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)),
+};
+const pipeBytes = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+async function sharedSetup() {
+  const h = location.hash.match(/[#&]t=([\w-]+)/); if (!h) return null;
+  try { return fillSetup(JSON.parse(new TextDecoder().decode(await pipeBytes(b64u.dec(h[1]), new DecompressionStream('deflate-raw'))))); }
+  catch (e) { console.warn('Could not read the teams in this link', e); return null; }
+}
+function shrinkLogo(src, max = 160) {
+  if (!src || !src.startsWith('data:')) return Promise.resolve(src || '');
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => { const k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      const w = c.toDataURL('image/webp', 0.8); res(w.startsWith('data:image/webp') ? w : c.toDataURL('image/png')); };
+    im.onerror = () => res(''); im.src = src;
+  });
+}
+async function shareLink(setup) {
+  const s = JSON.parse(JSON.stringify({ match: setup.match, teams: setup.teams, battingFirst: setup.battingFirst }));
+  for (const k of ['home', 'away']) {
+    const t = s.teams[k], same = !t.logoOriginal || t.logoOriginal === t.logo;
+    t.logo = await shrinkLogo(t.logo);
+    if (same) delete t.logoOriginal; else t.logoOriginal = await shrinkLogo(t.logoOriginal);
+  }
+  const z = await pipeBytes(new TextEncoder().encode(JSON.stringify(s)), new CompressionStream('deflate-raw'));
+  return `${location.origin}${location.pathname}?demo#t=${b64u.enc(z)}`;
+}
 function savedSetup() {
   if (params.get('demo') === 'sample') return null;
   const get = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
-  for (const s of [get('cc.game') && get('cc.game').setup, get('cc.lastSetup')]) {
-    if (!s || !s.teams || !s.teams.home || !s.teams.away) continue;
-    const t = normaliseSetup(JSON.parse(JSON.stringify(s))).teams;
-    if (!['home', 'away'].every(k => t[k].name && t[k].players.length >= 2)) continue;
-    for (const k of ['home', 'away']) t[k].short = t[k].short || t[k].name.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase();
-    return { ...CFG, ...s, teams: t, match: { ...CFG.match, ...(s.match || {}) } };
-  }
+  for (const s of [get('cc.game') && get('cc.game').setup, get('cc.lastSetup')]) { const f = fillSetup(s); if (f) return f; }
   return null;
 }
-const demoSetup = DEMO ? savedSetup() : null;
+let demoSetup = null, demoShared = false;
 function simStart() {
   m = new Match(demoSetup || CFG);
   m.apply({ t: 'open', striker: 0, nonStriker: 1, bowler: chooseBowler() });
@@ -800,7 +833,8 @@ function buildControls() {
   document.body.classList.add('field');
   const c = document.createElement('div'); c.id = 'ctl';
   c.innerHTML = `<button class="hide" data-a="hide" title="Hide (press C to show)">✕</button><h3>Test match</h3>
-    <p class="src">${demoSetup ? `Your teams from the scorer: <b>${esc(demoSetup.teams.home.name)} v ${esc(demoSetup.teams.away.name)}</b> · <a href="?demo=sample">use sample teams</a>` : `Sample teams${params.get('demo') === 'sample' ? ' · <a href="?demo">use my saved teams</a>' : ' (set up a match in the scorer on this device to use yours)'}`}</p>
+    <p class="src">${demoShared ? `<b>${esc(demoSetup.teams.home.name)} v ${esc(demoSetup.teams.away.name)}</b>` : demoSetup ? `Your teams from the scorer: <b>${esc(demoSetup.teams.home.name)} v ${esc(demoSetup.teams.away.name)}</b> · <a href="?demo=sample">use sample teams</a>
+      <button data-a="share" class="share">Copy link to send</button>` : `Sample teams${params.get('demo') === 'sample' ? ' · <a href="?demo">use my saved teams</a>' : ' (set up a match in the scorer on this device to use yours)'}`}</p>
     <div class="g"><button data-a="play">Pause</button><button data-a="next">Next ball</button>
     <button data-a="dot">Dot ball</button><button data-a="one">Single</button>
     <button data-a="four">FOUR</button><button data-a="six">SIX</button>
@@ -830,6 +864,15 @@ function buildControls() {
     ff2: () => sim.fastForward(() => m.current === 1),
     ffend: () => sim.fastForward(() => m.current === 1 && m.inn.legal >= (m.overs - 2) * 6),
     ffdone: () => { sim.fastForward(() => m.status === 'complete'); runSummary(); },
+    share: async b => {
+      b.disabled = true; b.textContent = 'Making link…';
+      try {
+        const url = await shareLink(demoSetup);
+        try { await navigator.clipboard.writeText(url); b.textContent = 'Link copied ✓'; }
+        catch (e) { prompt('Copy this link:', url); b.textContent = 'Copy link to send'; }
+      } catch (e) { b.textContent = 'Could not make a link'; }
+      setTimeout(() => { b.disabled = false; b.textContent = 'Copy link to send'; }, 3000);
+    },
     restart: () => { summaryMode = false; director.clear(); simStart(); },
   };
   c.addEventListener('click', e => { const b = e.target.closest('button'); if (b && act[b.dataset.a]) act[b.dataset.a](b); });
@@ -845,8 +888,12 @@ function fit() {
 addEventListener('resize', fit); fit();
 setInterval(rotateStatus, CFG.statusRotateMs || 6000);
 if (LIVE) startLive();
-else { simStart(); setChrome(true); if (DEMO) buildControls(); }
-document.fonts.ready.then(() => { stage.classList.add('ready'); if (!LIVE) sim.loop(); });
+else (async () => {
+  if (DEMO) { demoSetup = await sharedSetup(); demoShared = !!demoSetup; demoSetup = demoSetup || savedSetup(); }
+  simStart(); setChrome(true); if (DEMO) buildControls();
+  await document.fonts.ready; sim.loop();
+})();
+document.fonts.ready.then(() => stage.classList.add('ready'));
 </script>
 </body>
 </html>
