@@ -74,7 +74,18 @@
   .team .r2.long { font-size:21px; }
   .bat { flex:1 1 0; }
   .bat .nm { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-  .strk { color:var(--a); font-size:24px; width:30px; flex:0 0 30px; }
+  /* On strike: the striker's half lights up in the batting team's colour with a bat icon and an accent edge;
+     the non-striker is dimmed. The batters keep their places, so the highlight moves when they swap ends. */
+  .bat .r1 { position:relative; }
+  .bat .r1.on { background:linear-gradient(180deg,var(--p),var(--pd)); color:var(--pt); }
+  .bat .r1.on::before { content:''; position:absolute; left:0; top:0; bottom:0; width:7px; background:var(--a); }
+  .bat .r1.on .bl { color:inherit; opacity:.75; }
+  .bat .r1.on.swap { animation:onIn .5s ease-out; }
+  .bat .r1.offs .nm, .bat .r1.offs .rn { opacity:.62; }
+  .bat .r1.offs .bl { opacity:.5; }
+  @keyframes onIn { from { filter:brightness(1.9); } }
+  .strk { width:36px; flex:0 0 36px; height:30px; display:flex; align-items:center; }
+  .strk svg { width:30px; height:30px; fill:currentColor; filter:drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
   .strk.off { visibility:hidden; }
   .rn { font-size:42px; font-weight:800; min-width:56px; text-align:right; }
   .bl { font-size:26px; color:#8fb3ff; min-width:42px; margin-left:10px; }
@@ -335,7 +346,8 @@ let hasGame = true, hiddenByCmd = false;
 const title = () => (m.cfg.match && (m.cfg.match.title || m.cfg.match.comp)) || '';   // PlayHQ games: "Mens 1st Grade · Round 5"
 const sub = (...parts) => parts.filter(Boolean).join(' · ');
 const bugEl = document.getElementById('bug');
-let lastScore = '';
+let lastScore = '', lastStrikerId = null;
+const BAT_ICON = '<svg viewBox="0 0 24 24" aria-label="on strike"><g transform="rotate(40 12 12)"><rect x="10.7" y="0.5" width="2.6" height="7.5" rx="1.2"/><path d="M8.4 8h7.2v13.1a1.9 1.9 0 0 1-1.9 1.9h-3.4a1.9 1.9 0 0 1-1.9-1.9z"/></g></svg>';
 function renderBug() {
   if (!hasGame) return;
   const inn = m.inn, bat = m.team(inn.bat), bowl = m.team(inn.bowl);
@@ -344,8 +356,10 @@ function renderBug() {
   const bw = inn.bowlers[inn.bowler];
   const score = `${inn.runs}-${inn.wkts}`;
   const flash = lastScore && score !== lastScore ? 'flash' : ''; lastScore = score;
+  const swap = striker && striker.id !== lastStrikerId; lastStrikerId = striker ? striker.id : null;
+  const rowCls = b => !b ? '' : b === striker ? `on${swap ? ' swap' : ''}` : 'offs';
   const batRow = b => b
-    ? `<span class="strk ${b === striker ? '' : 'off'}">▶</span><span class="nm">${esc(surname(b.name))}</span><span class="rn">${b.runs}</span><span class="bl">${b.balls}</span>`
+    ? `<span class="strk ${b === striker ? '' : 'off'}">${BAT_ICON}</span><span class="nm">${esc(surname(b.name))}</span><span class="rn">${b.runs}</span><span class="bl">${b.balls}</span>`
     : '<span class="nm"></span>';
   const chips = inn.thisOver.map((c, i, a) => `<span class="chip ${c.k} ${i === a.length - 1 ? 'new' : ''}">${esc(c.t)}</span>`).join('');
   const sl = statusList(m), st = sl[statusIdx % sl.length];
@@ -356,11 +370,11 @@ function renderBug() {
       <div class="r2 ${st.length > 20 ? 'long' : ''}" id="status"><span class="st">${esc(st)}</span></div>
     </div>
     <div class="seg bat" style="${teamVars(bat)}">
-      <div class="r1">${batRow(pair[0])}</div>
+      <div class="r1 ${rowCls(pair[0])}">${batRow(pair[0])}</div>
       <div class="r2"><span class="lbl">THIS OVER</span><span class="chips">${chips}</span></div>
     </div>
     <div class="seg bat bwl" style="${teamVars(bat)}">
-      <div class="r1">${batRow(pair[1])}</div>
+      <div class="r1 ${rowCls(pair[1])}">${batRow(pair[1])}</div>
       <div class="r2">${bw ? `<span class="nm">${esc(surname(bw.name))}</span><span class="fig">${bw.wkts}-${bw.runs}</span><span class="bov">${oversStr(bw.balls)}</span>` : ''}</div>
     </div>
     ${logoPanel(bowl, 'right')}`;
