@@ -159,6 +159,45 @@
   .hype.mile .band { background:linear-gradient(90deg,#3a2400,#b8860b 50%,#3a2400); border-color:#ffe082; }
   .hype.wkt .band { background:linear-gradient(90deg,#5e0000,#d32f2f 50%,#5e0000); border-color:#fff; }
   .hype.wkt .big { filter:drop-shadow(0 0 28px rgba(255,80,80,.9)) drop-shadow(0 10px 0 rgba(0,0,0,.35)); }
+  /* ── free hit: the umpire's twirling finger whips up an upside-down twister ── */
+  .hype.fh .band { background:linear-gradient(90deg,#2a0a4a,#7b1fa2 35%,#d81b60 65%,#2a0a4a); border-color:#ffea00; }
+  .hype.fh .big { left:170px; background:linear-gradient(#ffffff,#fff59d 45%,#ffea00); -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 30px rgba(255,234,0,.85)) drop-shadow(0 10px 0 rgba(0,0,0,.35)); }
+  .hype.fh .kicker, .hype.fh .sub, .hype.fh .note { margin-left:340px; }
+  .hype.fh .sub { border-left-color:#ffea00; } .hype.fh .sub span { color:#ffea00; }
+  .fh-arm { position:absolute; left:250px; bottom:-40px; width:260px; height:520px; transform:translateY(560px);
+    animation:armUp .45s .05s cubic-bezier(.2,1.2,.4,1) forwards; z-index:3; }
+  @keyframes armUp { to { transform:translateY(0); } }
+  .fh-twirl { position:absolute; inset:0; transform-origin:50% 100%; animation:twirl .42s .5s linear infinite; }
+  @keyframes twirl { 0%{transform:rotate(-7deg) translateX(-10px)} 25%{transform:rotate(0) translateX(0) translateY(-10px)}
+    50%{transform:rotate(7deg) translateX(10px)} 75%{transform:rotate(0) translateX(0) translateY(6px)} 100%{transform:rotate(-7deg) translateX(-10px)} }
+  .fh-arm svg { width:100%; height:100%; overflow:visible; filter:drop-shadow(0 10px 18px rgba(0,0,0,.5)); }
+  .fh-spin { transform-box:fill-box; transform-origin:50% 100%; }
+  .fh-tw { position:absolute; left:380px; bottom:472px; width:0; height:0; z-index:2; transform-origin:0 100%;
+    animation:twist 1.3s .9s ease-in-out infinite alternate; }
+  @keyframes twist { 0%{transform:skewX(9deg)} 50%{transform:skewX(-4deg) translateX(10px)} 100%{transform:skewX(-11deg)} }
+  .fh-funnel { position:absolute; left:-300px; bottom:0; width:600px; height:820px; transform-origin:50% 100%; transform:scaleY(0);
+    clip-path:polygon(47% 100%,53% 100%,100% 0,0 0);
+    background:repeating-linear-gradient(100deg,rgba(255,255,255,0) 0 26px,rgba(255,255,255,.28) 26px 40px),
+      linear-gradient(to top,rgba(255,255,255,.95),rgba(225,232,255,.6) 45%,rgba(200,210,255,.18));
+    background-size:160px 100%,100% 100%; animation:funUp .9s .5s cubic-bezier(.3,1,.4,1) forwards, funSpin .35s linear infinite;
+    filter:drop-shadow(0 0 18px rgba(255,255,255,.55)); }
+  @keyframes funUp { to { transform:scaleY(1); } }
+  @keyframes funSpin { to { background-position:160px 0,0 0; } }
+  .fh-ring { position:absolute; left:0; bottom:var(--y); width:var(--w); height:calc(var(--w) * .2); margin-left:calc(var(--w) / -2);
+    border-radius:50%; border:var(--bw) solid #fff; border-left-color:transparent; border-top-color:rgba(255,255,255,.35);
+    box-shadow:0 0 14px rgba(255,255,255,.6); opacity:0; animation:ringIn .25s var(--d) ease-out forwards, whirl .6s var(--d) ease-in-out infinite alternate; }
+  @keyframes ringIn { to { opacity:var(--o); } }
+  @keyframes whirl { from { translate:calc(var(--sx) * -1) 0; } to { translate:var(--sx) 0; } }
+  .fh-bit { position:absolute; left:0; bottom:0; width:var(--s); height:var(--s); border-radius:50%; background:#fff; opacity:0;
+    animation:debris 1.8s var(--d) ease-in infinite; }
+  .fh-bit.ball { background:radial-gradient(circle at 35% 35%,#ff6b6b,#b71c1c); box-shadow:inset 0 0 0 2px rgba(255,255,255,.35); }
+  @keyframes debris { 0%{opacity:0; transform:translate(0,0) rotate(0)} 10%{opacity:1}
+    100%{opacity:0; transform:translate(var(--dx),-1100px) rotate(720deg)} }
+  /* score bar: FREE HIT pill while the next ball is a free hit */
+  .lbl.fhp { color:#fff; background:linear-gradient(90deg,#7b1fa2,#d81b60); padding:3px 12px; border-radius:6px; letter-spacing:2px;
+    font-weight:800; animation:fhPulse 1s ease-in-out infinite alternate; }
+  @keyframes fhPulse { from { box-shadow:0 0 0 rgba(216,27,96,0); } to { box-shadow:0 0 16px rgba(255,234,0,.9); } }
   /* wicket: details panel under the band */
   .hype.wkt .kicker { top:calc(50% - 250px); }
   .wpan { position:absolute; left:50%; top:calc(50% + 196px); width:1440px; margin-left:-720px; opacity:0; animation:fadeUp .45s .8s forwards;
@@ -390,7 +429,7 @@ function renderBug() {
     </div>
     <div class="seg bat" style="${teamVars(bat)}">
       <div class="r1 ${rowCls(pair[0])}">${batRow(pair[0])}</div>
-      <div class="r2"><span class="lbl">THIS OVER</span><span class="chips">${chips}</span></div>
+      <div class="r2">${inn.freeHit ? '<span class="lbl fhp">FREE HIT</span>' : '<span class="lbl">THIS OVER</span>'}<span class="chips">${chips}</span></div>
     </div>
     <div class="seg bat bwl" style="${teamVars(bat)}">
       <div class="r1 ${rowCls(pair[1])}">${batRow(pair[1])}</div>
@@ -563,6 +602,37 @@ function hypeHTML(ev) {
     <div class="sub">${esc(b.name.toUpperCase())}<span>${b.runs}* (${b.balls})</span></div>
     <div class="note">${ordinal(n).toUpperCase()} ${six ? 'SIX' : 'FOUR'} OF THE INNINGS</div></div>`;
 }
+/* Free hit: umpire's arm rises, the finger twirls, and an upside-down twister spins up the screen out of it. */
+const UMP_ARM = `<svg viewBox="0 0 260 520">
+  <path d="M70 520 L92 250 Q96 222 130 222 Q164 222 168 250 L190 520 Z" fill="#f4f5f8" stroke="#c9ced9" stroke-width="3"/>
+  <path d="M96 232 Q130 214 164 232 L166 262 Q130 246 94 262 Z" fill="#1a1f4a"/>
+  <path d="M92 300 L168 300" stroke="#dfe3ea" stroke-width="4"/>
+  <g class="fh-hand">
+    <path d="M100 236 Q96 170 108 156 L152 156 Q166 170 162 236 Z" fill="#e0a77a"/>
+    <path d="M104 172 Q100 150 116 148 L152 148 Q166 152 162 172 Q158 190 150 192 L112 192 Q104 188 104 172 Z" fill="#e8b58a"/>
+    <path d="M112 168 L150 168 M112 180 L150 180" stroke="#c98d62" stroke-width="3" stroke-linecap="round"/>
+    <rect x="117" y="40" width="26" height="122" rx="13" fill="#e8b58a"/>
+    <path d="M122 54 Q130 48 138 54" stroke="#f6d3b6" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <path d="M160 176 Q182 168 178 150 Q172 140 160 150" fill="#e0a77a"/>
+  </g></svg>`;
+function freeHitHTML(ev, striker) {
+  const t = m.team(m.inn.bat);
+  const carry = ev.wasFreeHit;
+  const kicker = carry ? (ev.extra === 'wd' ? 'WIDE · STILL ON' : 'NO BALL AGAIN') : 'NO BALL';
+  const rings = Array.from({ length: 17 }, (_, i) => {
+    const y = 18 + i * 47, w = 40 + y * 0.66;   // follow the funnel's flare
+    return `<i class="fh-ring" style="--w:${w.toFixed(0)}px;--y:${y}px;--bw:${(3 + i * .3).toFixed(1)}px;--o:${(0.95 - i * .03).toFixed(2)};--d:${(0.55 + i * 0.05).toFixed(2)}s;animation-delay:${(0.55 + i * 0.05).toFixed(2)}s,${(-i * 0.13).toFixed(2)}s;--sx:${(4 + i * 1.6).toFixed(0)}px"></i>`;
+  }).join('');
+  const bits = Array.from({ length: 22 }, (_, i) => {
+    const ball = i % 6 === 0;
+    return `<i class="fh-bit ${ball ? 'ball' : ''}" style="--s:${ball ? 22 : (5 + Math.random() * 9).toFixed(0)}px;--dx:${((Math.random() - .5) * 700).toFixed(0)}px;--d:${(0.7 + Math.random() * 1.6).toFixed(2)}s"></i>`;
+  }).join('');
+  return `<div class="hype fh" style="${teamVars(t)}"><div class="flash"></div><div class="band"><div class="streaks"></div></div>
+    <div class="fh-tw"><div class="fh-funnel"></div>${rings}${bits}</div><div class="fh-arm"><div class="fh-twirl">${UMP_ARM}</div></div>
+    <div class="kicker">${kicker}</div><div class="big">FREE HIT!</div>
+    ${striker ? `<div class="sub">${esc(striker.name.toUpperCase())}<span>ON STRIKE</span></div>` : ''}
+    <div class="note">CAN ONLY BE OUT RUN OUT</div></div>`;
+}
 function milestoneHTML(ev, ms) {
   const t = m.team(m.inn.bat), b = ev.batter;
   return `<div class="hype six mile" style="${teamVars(t)}"><div class="flash"></div><div class="band"><div class="streaks"></div></div>
@@ -663,6 +733,10 @@ function onBall(ev) {
     if (ms) items.push({ ms: T.hype + 1000, render: () => milestoneHTML(ev, ms) });
   }
   if (H && ev.wicket && CFG.hype.wickets) items.push({ ms: T.wicket, render: () => wicketHTML(ev) });
+  if (H && ev.freeHit && !ev.inningsComplete && CFG.hype.freeHits !== false) {
+    const sk = inn.batters[inn.striker], striker = sk && sk.status === 'batting' ? { ...sk } : null;
+    items.push({ ms: T.freeHit || 5500, render: () => freeHitHTML(ev, striker) });
+  }
   if (ev.inningsComplete) {
     const bat = m.team(inn.bat);
     if (m.status === 'break') items.push({ ms: 6000, render: () => bannerHTML(bat, `${bat.short} ${inn.runs}-${inn.wkts} (${oversStr(inn.legal)})`, 'INNINGS BREAK', `${m.team(inn.bowl).name.toUpperCase()} NEED ${m.target} TO WIN`) });
@@ -893,6 +967,7 @@ function buildControls() {
     <div class="g"><button data-a="play">Pause</button><button data-a="next">Next ball</button>
     <button data-a="dot">Dot ball</button><button data-a="one">Single</button>
     <button data-a="four">FOUR</button><button data-a="six">SIX</button>
+    <button data-a="nb">No ball</button><button data-a="wd">Wide</button>
     <button data-a="wkt" class="w">Wicket</button></div>
     <h3>Show now</h3>
     <div class="g"><button data-a="bat">Batting card</button><button data-a="bowl">Bowling card</button>
@@ -913,6 +988,7 @@ function buildControls() {
     play: b => { sim.running = !sim.running; b.textContent = sim.running ? 'Pause' : 'Play'; },
     next: () => sim.step(), dot: () => sim.step(() => ({ runs: 0 })), one: () => sim.step(() => ({ runs: 1 })),
     four: () => sim.step(() => ({ runs: 4 })), six: () => sim.step(() => ({ runs: 6 })),
+    nb: () => sim.step(() => ({ extra: 'nb', runs: 0 })), wd: () => sim.step(() => ({ extra: 'wd', runs: 0 })),
     wkt: () => sim.step(() => ({ runs: 0, wicket: randomWicket() })),
     summ: () => runSummary(), bat: () => director.push(cards.batting(m.current)), bowl: () => director.push(cards.bowling(m.current)), worm: () => director.push(cards.worm()),
     ff5: () => { const i = m.current, tgt = Math.min(m.overs * 6, (Math.floor(m.inn.legal / 6) + 5) * 6); sim.fastForward(() => m.current !== i || m.inn.legal >= tgt); },

@@ -108,6 +108,9 @@
       if (boundary === 4) st.fours++; if (boundary === 6) st.sixes++;
       if (legal) { inn.legal++; bw.balls++; }
       inn.runs += total;
+      // Free hit: the delivery after a no-ball. A wide or another no-ball carries it to the next ball; a legal ball uses it up.
+      const wasFreeHit = !!inn.freeHit;
+      inn.freeHit = ex === 'nb' || (wasFreeHit && ex === 'wd');
 
       const w = o.wicket || null;
       const outId = w ? (w.type === 'run out' && w.out === 'nonStriker' ? inn.nonStriker : inn.striker) : -1;
@@ -149,7 +152,7 @@
       const inningsComplete = allOut || inn.legal >= this.overs * 6 || (this.current === 1 && inn.runs >= this.target);
       if (inningsComplete) this.endInnings();
       const credited = offBat ? runs : 0;
-      return { runs: total, extra: ex, boundary, wicket, credited, batter: { ...st }, overComplete, inningsComplete };
+      return { runs: total, extra: ex, boundary, wicket, credited, batter: { ...st }, overComplete, inningsComplete, freeHit: inn.freeHit, wasFreeHit };
     }
 
     computeResult() {

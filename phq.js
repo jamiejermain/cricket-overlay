@@ -69,11 +69,11 @@
       r.runs = r.credited = n; r.boundary = n === 4 || n === 6 ? n : null; r.ran = r.boundary ? 0 : n;
       r.chip = { t: n === 0 ? '•' : String(n), k: n === 0 ? 'dot' : n === 4 ? 'four' : n === 6 ? 'six' : 'run' };
     } else if (e.icon === 'WD') {
-      const n = num(/(\d+)\s*wide/i, 1); r.legal = false; r.runs = n; r.ran = n - 1;
+      const n = num(/(\d+)\s*wide/i, 1); r.legal = false; r.extra = 'wd'; r.runs = n; r.ran = n - 1;
       r.chip = { t: n === 1 ? 'wd' : `${n}wd`, k: 'extra' };
     } else if (e.icon === 'NB') {
       const bye = /leg bye/i.test(T) ? 'lb' : /bye/i.test(T) ? 'b' : '';
-      const n = num(/(\d+)\s*(?:run|bye|leg)/i, 0); r.legal = false; r.runs = 1 + n; r.ran = n;
+      const n = num(/(\d+)\s*(?:run|bye|leg)/i, 0); r.legal = false; r.extra = 'nb'; r.runs = 1 + n; r.ran = n;
       if (bye) r.chip = { t: n ? `nb+${n}${bye}` : 'nb', k: 'extra' };
       else { r.credited = n; r.boundary = n === 4 || n === 6 ? n : null; if (r.boundary) r.ran = 0; r.chip = { t: n ? `${n}nb` : 'nb', k: 'extra' }; }
     } else if (e.icon === 'B' || e.icon === 'LB') {
@@ -190,6 +190,8 @@
       // This over = deliveries in the latest over section.
       const last = balls[balls.length - 1];
       const thisOver = last ? balls.filter(e => e.section === last.section).map(e => e.chip) : [];
+      // Free hit after a no-ball, carried over by wides and further no-balls (as the engine does).
+      let freeHit = false; for (const e of balls) freeHit = e.extra === 'nb' || (freeHit && e.extra === 'wd');
 
       // Who's in, who's on strike, who's bowling.
       const inNow = batters.filter(b => b.status === 'batting').sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)).slice(-2);
@@ -214,7 +216,7 @@
       return { bat, bowl, runs, wkts, legal,
         extras: { wd: st.EXTRA_WIDES || 0, nb: st.EXTRA_NO_BALLS || 0, b: st.EXTRA_BYES || 0, lb: st.EXTRA_LEG_BYES || 0 },
         batters, order, bowlers, striker, nonStriker, bowler, bowlHist: bowlers.map(b => b.name), thisOver,
-        needBowler: !!overDone, overStartRuns: 0, worm, fow, complete,
+        needBowler: !!overDone, overStartRuns: 0, worm, fow, complete, freeHit: freeHit && !complete,
         _lastBall: last ? last.id : null, _balls: balls.length };
     });
 
@@ -276,7 +278,8 @@
     const facer = named(lastB.facer) || ni.batters[ni.striker] || { name: lastB.facer, runs: 0, balls: 0 };
     const overComplete = fresh.some(e => e.legal && e.after > 0 && e.after % 6 === 0);
     const inningsComplete = !pi.complete && !!ni.complete;
-    return { kind: 'ball', runs: lastB.runs, boundary: lastB.boundary, wicket, credited: lastB.credited, batter: { ...facer }, overComplete, inningsComplete };
+    return { kind: 'ball', runs: lastB.runs, boundary: lastB.boundary, wicket, credited: lastB.credited, batter: { ...facer }, overComplete, inningsComplete,
+      extra: lastB.extra || null, freeHit: !!ni.freeHit, wasFreeHit: !!pi.freeHit };
   }
 
   window.PlayHQ = { Q, gameVars, eventsVars, ingestEvents, build, diff, parseBall, oversToBalls };
