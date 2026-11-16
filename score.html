@@ -55,6 +55,9 @@
   .filebtn input { position:absolute; inset:0; opacity:0; }
   .banner { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:#fff7e0; border:1.5px solid #f3d27a; border-radius:14px; padding:12px 14px; margin-bottom:12px; }
   .banner b { flex:1; }
+  .pm { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--line); }
+  .pm .pmt { flex:1; min-width:0; } .pm small { display:block; color:var(--muted); font-size:13px; }
+  .pm .pmt b { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   /* scoring */
   .grid { display:grid; gap:12px; align-items:start; }
@@ -190,7 +193,7 @@ let settings = LS.get('cc.settings') || {};
 const qp = new URLSearchParams(location.search);
 if (qp.get('ch') && qp.get('k')) {                // opened from a "score on another device" link
   settings = { ch: qp.get('ch'), key: qp.get('k') };
-  history.replaceState(null, '', location.pathname);
+  history.replaceState(null, '', location.pathname + location.hash);
 }
 if (!settings.ch || !settings.key) settings = { ch: rid(10), key: rid(24) };
 delete settings.db;
@@ -198,6 +201,10 @@ LS.set('cc.settings', settings);
 let game = LS.get('cc.game');                     // { setup, actions, seq }
 let library = LS.get('cc.library', {});           // saved teams by name
 let draft = null, cloudGame = null;
+let serverMatches = {}, showAllPast = false;     // the server's list of saved matches
+// A link to one match: score.html#m=<id>. Opening it loads that match (from this device, or the server).
+const wantMatch = (location.hash.match(/[#&]m=([a-z0-9]{6,16})/) || [])[1] || null;
+if (wantMatch && (!game || game.setup.id !== wantMatch)) { const g = LS.get('cc.m.' + wantMatch); if (g && g.setup) { game = g; LS.set('cc.game', g); } }
 let m = null, lastEv = null, sync;
 
 function connect() {
@@ -207,6 +214,7 @@ function connect() {
   sync.put('prefs', prefs);
   if (sync.mode === 'cloud') {
     sync.get('library').then(lib => { if (lib) { library = { ...lib, ...library }; LS.set('cc.library', library); if (!game) render(); } }).catch(() => {});
+    sync.get('matches').then(x => { serverMatches = x || {}; if (!game) render(); }).catch(() => {});
     sync.get('scorer').then(s => {
       if (s && s.setup && (!game || s.setup.id !== game.setup.id || (s.seq || 0) > (game.seq || 0))) { cloudGame = s; render(); }
     }).catch(() => {});
@@ -219,16 +227,86 @@ function setPill(s) {
 }
 const team = k => game.setup.teams[k];
 function rebuild() { if (!game) { m = null; return; } const r = replay(game.setup, game.actions); m = r.m; lastEv = r.ev; }
-function save() { LS.set('cc.game', game); }
+function save() { LS.set('cc.game', game); keepLocal(); }
+
+/* ═══════════════ saved matches ═══════════════
+   Each match is kept under its own id, so a new match never wipes an old one:
+     this device: cc.m.<id> (the match) + cc.matches (the list)
+     server:      m-<id> (the match)    + matches/<id> (the list) – private, needs the scorer key */
+function matchSummary() {
+  const s = game.setup, T = s.teams, nm = t => t.short || t.name;
+  return { id: s.id, home: T.home.name, away: T.away.name, title: s.match.title || '', date: s.match.date || '', created: s.created || 0, updated: Date.now(),
+    score: m ? m.innings.filter(i => i.legal || i.runs || i.wkts).map(i => `${nm(T[i.bat])} ${i.runs}-${i.wkts} (${oversStr(i.legal)})`).join(' · ') : '',
+    result: m && m.status === 'complete' ? m.result : '' };
+}
+function keepLocal() {
+  if (!game || !game.setup || !game.setup.id) return;
+  const id = game.setup.id, sum = matchSummary();
+  const idx = [sum, ...LS.get('cc.matches', []).filter(x => x.id !== id)].slice(0, 200);
+  const put = () => { localStorage.setItem('cc.m.' + id, JSON.stringify(game)); localStorage.setItem('cc.matches', JSON.stringify(idx)); };
+  try { put(); } catch (e) {
+    // Phone storage full: drop this device's copies of the oldest matches (the server still has them).
+    for (const old of idx.slice(1).reverse()) { try { localStorage.removeItem('cc.m.' + old.id); put(); return; } catch (e2) {} }
+  }
+}
+const sentFull = {};   // match ids already sent whole to the server this visit
+function keepOnline(full) {
+  if (!game || sync.mode !== 'cloud') return;
+  const id = game.setup.id, k = 'm-' + id, busy = p => sync.pending[p] || sync.inflight[p];
+  if (full || !sentFull[id] || busy(k)) { sync.put(k, game); sentFull[id] = true; }
+  else { sync.put(k + '/actions', game.actions); sync.put(k + '/seq', game.seq); }
+  const sum = matchSummary(); serverMatches[id] = sum; sync.put('matches/' + id, sum);
+}
+function pastMatches() {
+  const byId = {};
+  for (const x of Object.values(serverMatches || {})) if (x && x.id) byId[x.id] = x;
+  for (const x of LS.get('cc.matches', [])) if (x && x.id && (!byId[x.id] || (x.updated || 0) >= (byId[x.id].updated || 0))) byId[x.id] = x;
+  return Object.values(byId).sort((a, b) => (b.created || 0) - (a.created || 0));
+}
+const matchDate = x => { const d = x.created ? new Date(x.created) : x.date ? new Date(x.date) : null;
+  return d && !isNaN(d) ? d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }) : ''; };
+function pastRow(x) {
+  const cur = game && game.setup.id === x.id;
+  return `<div class="pm"><div class="pmt"><b>${esc(x.home)} v ${esc(x.away)}</b>
+    <small>${esc([matchDate(x), x.title].filter(Boolean).join(' · '))}</small>
+    <small>${esc(x.result || x.score || 'not started')}</small></div>
+    ${cur ? '<span class="hint">open now</span>' : `<button class="ghost" data-open="${esc(x.id)}">Open</button>`}</div>`;
+}
+function pastCard() {
+  const all = pastMatches(); if (!all.length) return '';
+  const shown = showAllPast ? all : all.slice(0, 5);
+  return `<section class="card"><h2>Past matches</h2><p class="hint">Every match is saved. Open one to see it, share its scorecard or download its PDF.</p>
+    ${shown.map(pastRow).join('')}
+    ${all.length > shown.length ? `<button class="link" data-act="allpast">Show all ${all.length}</button>` : ''}</section>`;
+}
+function pastSheet() {
+  const all = pastMatches();
+  openSheet('Past matches', all.length ? `<p class="hint">This match stays saved – you can come back to it from here.</p>${all.map(pastRow).join('')}` : '<p class="hint">No saved matches yet.</p>', (d) => {
+    if (d.open) { closeSheet(); openMatch(d.open); }
+  });
+}
+// Open a saved match. Nothing goes to the stream until you score in it, so looking back never changes the overlay.
+async function openMatch(id) {
+  let g = LS.get('cc.m.' + id);
+  if (!g && sync.mode === 'cloud') { toast('Loading…'); try { g = await sync.get('m-' + id); } catch (e) {} }
+  if (!g || !g.setup || !g.actions) { toast("Couldn't find that match"); render(); return; }
+  game = { setup: normaliseSetup(g.setup), actions: list(g.actions), seq: g.seq || 0 };
+  cloudGame = null; rebuild(); LS.set('cc.game', game); keepLocal();
+  render(); window.scrollTo(0, 0);
+  toast(`${game.setup.teams.home.name} v ${game.setup.teams.away.name}`);
+}
 
 /* Publish what the overlay reads: /live = { setup, tick:{ state, event } }.
    A PlayHQ receiver will publish exactly the same shape. */
+let liveMatch = null;   // the match whose setup this page has put on /live
 function publish(kind, ev, full) {
   if (!game) return;
+  if (liveMatch !== game.setup.id) { full = true; liveMatch = game.setup.id; }
   const tick = { state: toState(m), event: { seq: game.seq, kind, ...(ev || {}) }, at: Date.now() };
   const busy = p => sync.pending[p] || sync.inflight[p];
   if (full || busy('live')) sync.put('live', { setup: game.setup, tick }); else sync.put('live/tick', tick);
   if (full || busy('scorer')) sync.put('scorer', game); else { sync.put('scorer/actions', game.actions); sync.put('scorer/seq', game.seq); }
+  keepOnline(full);
 }
 function commit(a) {
   if (a.t !== 'open' && (m.status !== 'live' || (a.t === 'ball' && (m.needOpeners || m.needBowler)))) return toast(m.status === 'complete' ? 'Match is over – Undo to change it' : 'Finish the prompt first');
@@ -280,6 +358,7 @@ function sendCmd(kind, label) {
 function linkTo(page, withKey) {
   const u = new URL(page, location.href); u.search = ''; u.hash = '';
   u.searchParams.set('ch', settings.ch); if (withKey) u.searchParams.set('k', settings.key);
+  if (withKey && page === 'score.html' && game) u.hash = 'm=' + game.setup.id;
   return u.href;
 }
 
@@ -388,7 +467,8 @@ function moreSheet() {
     opt('five', '5 runs', 'e.g. overthrows', live && !m.needBowler ? '' : 'disabled') +
     opt('end', 'End innings', 'declared / out of time', game && m.status === 'live' ? '' : 'disabled') +
     opt('logos', 'Fix team logos', 'remove logo backgrounds', game && (game.setup.teams.home.logo || game.setup.teams.away.logo) ? '' : 'disabled') +
-    opt('newmatch', 'New match', 'close this one') +
+    opt('newmatch', 'New match', 'this one stays saved') +
+    opt('past', 'Past matches', 'open an earlier match') +
     opt('backup', 'Download backup', 'save this match as a file', game ? '' : 'disabled') +
     opt('restore', 'Load a backup', 'from a backup file') +
     opt('pdf', 'Download PDF', 'the full scorecard as a file', game ? '' : 'disabled') +
@@ -400,8 +480,8 @@ function moreSheet() {
     ({
       retire: retireSheet, bowler: () => bowlerSheet(true), five: () => commit({ t: 'ball', runs: 5 }),
       end: () => confirmSheet('End this innings now?', () => commit({ t: 'end' })),
-      newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
-      settings: settingsSheet,
+      newmatch: () => confirmSheet('Start a new match? This one stays saved under Past matches.', newMatch),
+      settings: settingsSheet, past: pastSheet,
       logos: fixMatchLogos,
       names: namesSheet,
       card: openCard, pdf: downloadPDF, backup: downloadBackup, restore: pickBackup,
@@ -418,7 +498,7 @@ function settingsSheet() {
       <div class="copy"><input readonly value="${esc(olink)}"><button class="ghost" data-act="copyo">Copy</button></div>
       <a class="link" href="${esc(olink)}" target="_blank" rel="noopener">Open overlay to check it →</a></div>
     <div class="set"><h4>Score from another phone or iPad</h4>
-      <p class="hint">Open this link on the other device to score the same match. <b>Keep it private</b> – it includes your scorer key, so anyone with it can change the score.</p>
+      <p class="hint">Open this link on the other device to score this same match. <b>Keep it private</b> – it includes your scorer key, so anyone with it can change the score.</p>
       <div class="copy"><input readonly value="${esc(slink)}"><button class="ghost" data-act="copys">Copy</button></div></div>
     <div class="set"><h4>Follow PlayHQ instead of scoring</h4>
       <p class="hint">If the club scorer is scoring the game live on PlayHQ, the relay can send PlayHQ's score to your overlay. Open this on a laptop or iPad (keep it private too – it includes your scorer key).</p>
@@ -642,7 +722,7 @@ const keeperOpts = t => t.players.length ? t.players.map((n, i) => `<option valu
 function renderSetup() {
   if (!draft) draft = LS.get('cc.lastSetup') || defaultSetup();
   const d = draft;
-  app.innerHTML = `${cloudBanner()}${takeoverCard()}${restoreCard()}
+  app.innerHTML = `${cloudBanner()}${pastCard()}${takeoverCard()}${restoreCard()}
     <section class="card"><h2>New match</h2>
       <label>Match title <span class="hint">shown on the stream</span><input data-m="title" value="${esc(d.match.title)}" placeholder="U12 Division 2 · Round 5"></label>
       <label>Ground <span class="hint">optional, shown on the match summary</span><input data-m="venue" value="${esc(d.match.venue || '')}" placeholder="Kaleen Oval"></label>
@@ -770,6 +850,7 @@ async function cleanLogo(t) {
   t.logoOriginal = src; t.logo = clean; t.logoClean = true;
   toast('Background removed');
 }
+function newMatch() { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); window.scrollTo(0, 0); }
 function startMatch() {
   for (const k of ['home', 'away']) {
     const t = draft.teams[k];
@@ -879,6 +960,8 @@ app.addEventListener('click', e => {
   if (d.act === 'restore') { pickBackup(); return; }
   if (d.act === 'backup') { downloadBackup(); return; }
   if (d.act === 'pdf') { downloadPDF(); return; }
+  if (d.open) { openMatch(d.open); return; }
+  if (d.act === 'allpast') { showAllPast = true; render(); return; }
   if (!game) {   // setup screen
     if (d.bf) { draft.battingFirst = d.bf; saveDraft(); document.querySelectorAll('[data-bf]').forEach(x => x.classList.toggle('on', x === b)); }
     else if (d.clearlogo) { const t = draft.teams[d.clearlogo]; t.logo = ''; delete t.logoOriginal; delete t.logoClean; saveDraft(); renderSetup(); }
@@ -895,7 +978,7 @@ app.addEventListener('click', e => {
   ({
     wicket: wicketSheet, undo, more: moreSheet, break: toggleBreak, openers: openersSheet, bowler: () => bowlerSheet(),
     swap: () => commit({ t: 'swap' }), card: openCard,
-    newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
+    newmatch: () => confirmSheet('Start a new match? This one stays saved under Past matches.', newMatch),
   })[d.act]?.();
 });
 $('#menuBtn').onclick = () => (game ? moreSheet() : settingsSheet());
@@ -907,10 +990,16 @@ function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add
 // keep the screen awake while scoring
 let wake; document.addEventListener('click', async () => { try { if (!wake && navigator.wakeLock) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => (wake = null)); } } catch (e) {} });
 
-function render() { if (!game) renderSetup(); else renderScore(); }
+function render() {
+  const h = game && game.setup.id ? '#m=' + game.setup.id : '';
+  if (location.hash !== h) history.replaceState(null, '', location.pathname + location.search + h);
+  if (!game) renderSetup(); else renderScore();
+}
+addEventListener('hashchange', () => location.reload());   // pasted another match's link into this tab
 if (game) game.setup = normaliseSetup(game.setup);
 connect(); rebuild(); render(); autoPrompt();
-if (game && sync.mode === 'cloud') publish('other', null, true);
+if (wantMatch && (!game || game.setup.id !== wantMatch)) openMatch(wantMatch);
+else if (game) { keepLocal(); keepOnline(true); }
 </script>
 </body>
 </html>

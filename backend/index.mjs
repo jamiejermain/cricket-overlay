@@ -5,14 +5,15 @@
 //  GET  /ch/{code}/feed?rev=N&srev=M   what the overlay polls: live + cmd + prefs
 //                                      (204 if nothing changed since rev N;
 //                                       setup only included when it changed since M)
-//  GET  /ch/{code}/doc/{path+}         read a doc (scorer/library need the scorer key)
+//  GET  /ch/{code}/doc/{path+}         read a doc (scorer/library/matches/m-* need the scorer key)
 //  PUT  /ch/{code}/doc/{path+}         write a doc or a path inside it (needs the scorer key)
 //  POST /playhq/{secret}               PlayHQ webhook receiver (stores raw events for now)
 //
 //  A channel is claimed by the first scorer key that writes to it;
 //  after that only that key can write. Everything on the stream is public to read.
 //
-//  DynamoDB (single table): pk = "ch#<code>", sk = live | cmd | prefs | scorer | library | ping | meta
+//  DynamoDB (single table): pk = "ch#<code>", sk = live | cmd | prefs | scorer | library | matches | m-<matchId> | ping | meta
+//    m-<matchId> = one saved match (setup + every ball), matches = { <matchId>: summary } – so old matches are kept
 //    meta = { keyHash, rev, r_live, r_cmd, r_prefs, r_setup }
 //  PlayHQ raw events: pk = "playhq#raw", sk = "<iso time>#<uuid>", ttl = 30 days
 // ─────────────────────────────────────────────────────────────
@@ -23,8 +24,9 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 const db = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const TABLE = process.env.TABLE;
 const FEED = ['live', 'cmd', 'prefs'];
-const DOCS = ['live', 'cmd', 'prefs', 'scorer', 'library', 'ping'];
-const PRIVATE = ['scorer', 'library'];
+const DOCS = ['live', 'cmd', 'prefs', 'scorer', 'library', 'matches', 'ping'];
+const PRIVATE = ['scorer', 'library', 'matches'];
+const MATCH_RE = /^m-[a-z0-9]{6,16}$/;   // one doc per match, private like scorer
 const CODE_RE = /^[a-z0-9]{6,32}$/;
 const MAX_BODY = 350_000, MAX_DOC = 390_000;
 
@@ -136,11 +138,11 @@ export const handler = async event => {
     if (route === 'GET /ch/{code}/feed') return await feed(pk, event.queryStringParameters || {});
 
     const parts = String(p.path || '').split('/').filter(Boolean), top = parts[0];
-    if (!DOCS.includes(top)) return res(404, { error: 'unknown document' });
+    if (!DOCS.includes(top) && !MATCH_RE.test(top)) return res(404, { error: 'unknown document' });
     const key = (event.headers || {})['x-scorer-key'] || '';
 
     if (route === 'GET /ch/{code}/doc/{path+}') {
-      if (PRIVATE.includes(top) && !(await keyOk(pk, key, false))) return res(403, { error: 'scorer key needed' });
+      if ((PRIVATE.includes(top) || MATCH_RE.test(top)) && !(await keyOk(pk, key, false))) return res(403, { error: 'scorer key needed' });
       return res(200, getPath(parseDoc(await getItem(pk, top)), parts.slice(1)));
     }
     if (route === 'PUT /ch/{code}/doc/{path+}') {
