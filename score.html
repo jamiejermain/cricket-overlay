@@ -459,8 +459,11 @@ function namesSheet() {
   const bat = inn.batters.map(b => opt('bat:' + b.id, b.name, b.status === 'batting' ? 'batting now' : b.status === 'out' ? 'out' : '')).join('');
   const bowl = list(bowlT.players).map((n, i) => opt('bowl:' + i, n)).join('');
   openSheet('Edit player names', `<p class="hint">Tap a player to change their name. The score isn't touched.</p>
+    ${opts(opt('all:' + inn.bat, `Edit all ${batT.name} names`, 'one list, one per line') + opt('all:' + inn.bowl, `Edit all ${bowlT.name} names`, 'one list, one per line'))}
     <h4>${esc(batT.name)} (batting)</h4>${opts(bat)}<h4>${esc(bowlT.name)} (bowling)</h4>${opts(bowl)}`, d => {
-    const [side, n] = String(d.v).split(':'), k = side === 'bat' ? inn.bat : inn.bowl;
+    const [side, n] = String(d.v).split(':');
+    if (side === 'all') return bulkNamesSheet(n);
+    const k = side === 'bat' ? inn.bat : inn.bowl;
     const from = side === 'bat' ? inn.batters[+n].name : list(team(k).players)[+n];
     const to = (window.prompt(`New name for ${from}`, from) || '').trim();
     if (!to || to === from) return;
@@ -469,6 +472,32 @@ function namesSheet() {
     game.actions.push({ t: 'rename', team: k, from, to, ...(side === 'bat' ? { id: +n } : {}) }); game.seq = (game.seq || 0) + 1;
     rebuild(); save(); publish('other', null, true);
     toast(`${from} → ${to}`); namesSheet(); render();
+  });
+}
+/* Rename a whole team at once: a list of names, one per line, in the same order. One action, so one Undo. */
+function bulkNamesSheet(k) {
+  // Where this team batted, rename its batters by id (PlayHQ can have several "Fill-in"s); otherwise by name.
+  const bi = m.innings.map((x, i) => i).filter(i => m.innings[i].bat === k).pop();
+  const rows = bi != null ? m.innings[bi].batters.map(b => ({ id: b.id, name: b.name })) : list(team(k).players).map(name => ({ name }));
+  openSheet(`All ${team(k).name} names`, `<p class="hint">One name per line, in the same order. Change any you need, then Save. The score isn't touched.</p>
+    <textarea id="bulkNames" rows="${Math.min(16, rows.length + 1)}" autocapitalize="words">${esc(rows.map(r => r.name).join('\n'))}</textarea>
+    <div class="sheet-foot"><button class="primary" data-act="save">Save names</button><button class="ghost" data-act="back">Back</button></div>`, d => {
+    if (d.act === 'back') return namesSheet();
+    if (d.act !== 'save') return;
+    const lines = $('#bulkNames').value.split('\n').map(x => x.trim());
+    while (lines.length > rows.length && !lines[lines.length - 1]) lines.pop();
+    if (lines.length !== rows.length || lines.some(x => !x)) return toast(`Keep exactly ${rows.length} names, one per line`);
+    const pl = list(game.setup.teams[k].players), changes = [];
+    rows.forEach((r, i) => {
+      const to = lines[i]; if (to === r.name) return;
+      changes.push({ team: k, from: r.name, to, ...(r.id != null ? { id: r.id, inn: bi } : {}) });
+      const j = r.id != null ? pl.indexOf(r.name) : i; if (j >= 0) pl[j] = to;
+    });
+    if (!changes.length) return toast('No changes');
+    game.setup.teams[k].players = pl;
+    game.actions.push({ t: 'rename', list: changes }); game.seq = (game.seq || 0) + 1;
+    rebuild(); save(); publish('other', null, true);
+    closeSheet(); toast(`${changes.length} name${changes.length === 1 ? '' : 's'} updated`); render();
   });
 }
 /* Take over from PlayHQ: start scoring from whatever the overlay is showing now (the relay's last score),

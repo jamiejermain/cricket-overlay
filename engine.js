@@ -14,7 +14,8 @@
 //    { t:'swap' }                                  change strike
 //    { t:'retire', who, next? }                    retired not out
 //    { t:'end' }                                   end the innings early
-//    { t:'rename', team, from, to, id? }            fix a player's name (id = batter id in the current innings)
+//    { t:'rename', team, from, to, id?, inn? }      fix a player's name (id = batter id in innings inn, default current)
+//    { t:'rename', list:[{team, from, to, id?, inn?}, …] }   several at once (one Undo)
 //    { t:'load', state }                           take over mid-match from a published snapshot (e.g. PlayHQ)
 // ─────────────────────────────────────────────────────────────
 (function () {
@@ -85,7 +86,7 @@
         }
         case 'end': this.endInnings(); return null;
         case 'load': this.load(a.state); return null;
-        case 'rename': this.rename(a); return null;
+        case 'rename': (a.list ? list(a.list) : [a]).forEach(r => this.rename(r)); return null;
         case 'ball': return this.status === 'live' ? this.bowl(a) : null;
       }
       return null;
@@ -183,15 +184,16 @@
 
     // Fix a player's name mid-match. Batters are matched by id in the current innings (PlayHQ can have
     // two "Fill-in"s), everywhere else by name; dismissal text uses the short form ("b J. Smith").
-    rename({ team, id, from, to }) {
+    rename({ team, id, from, to, inn: at }) {
       to = String(to || '').trim(); if (!to || !from || to === from) return;
       const sf = shortName(from), sto = shortName(to);
       const fix = t => (t && t.includes(sf) ? t.split(sf).join(sto) : t);
+      const target = at != null ? +at : this.current;
       this.innings.forEach((inn, n) => {
         if (inn.bat === team) {
-          const one = n === this.current && id != null ? inn.batters[id] : null;
+          const one = n === target && id != null ? inn.batters[id] : null;
           if (one && one.name === from) { one.name = to; const f = inn.fow.find(x => x.name === from); if (f && one.status === 'out') f.name = to; }
-          else if (id == null || n !== this.current) { inn.batters.forEach(b => { if (b.name === from) b.name = to; }); inn.fow.forEach(f => { if (f.name === from) f.name = to; }); }
+          else if (id == null || n !== target) { inn.batters.forEach(b => { if (b.name === from) b.name = to; }); inn.fow.forEach(f => { if (f.name === from) f.name = to; }); }
         } else {
           inn.bowlers.forEach(b => { if (b.name === from) b.name = to; });
           inn.bowlHist = inn.bowlHist.map(x => (x === from ? to : x));
