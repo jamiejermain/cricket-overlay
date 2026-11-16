@@ -391,7 +391,8 @@ function moreSheet() {
     opt('newmatch', 'New match', 'close this one') +
     opt('backup', 'Download backup', 'save this match as a file', game ? '' : 'disabled') +
     opt('restore', 'Load a backup', 'from a backup file') +
-    opt('card', 'Scorecard & PDF', 'share or save the full card', game ? '' : 'disabled') +
+    opt('pdf', 'Download PDF', 'the full scorecard as a file', game ? '' : 'disabled') +
+    opt('card', 'Share scorecard', 'a link to the full card', game ? '' : 'disabled') +
     opt('names', 'Edit player names', 'keeps the score', game ? '' : 'disabled') +
     opt('takeover', 'Take over from PlayHQ', 'carry on from the score on stream') +
     opt('settings', 'Settings', 'overlay link & database')), d => {
@@ -403,7 +404,7 @@ function moreSheet() {
       settings: settingsSheet,
       logos: fixMatchLogos,
       names: namesSheet,
-      card: openCard, backup: downloadBackup, restore: pickBackup,
+      card: openCard, pdf: downloadPDF, backup: downloadBackup, restore: pickBackup,
       takeover: () => confirmSheet('Close this match and carry on from the score on stream?', takeover),
     })[d.v]();
   });
@@ -509,6 +510,26 @@ async function cardLink() {
   const data = { setup: { match: S.match, teams, battingFirst: S.battingFirst }, state: st };
   const z = await pipeBytes(new TextEncoder().encode(JSON.stringify(data)), new CompressionStream('deflate-raw'));
   return new URL('card.html', location.href).href.split('?')[0] + '#d=' + b64u(z);
+}
+/* Download PDF: build the scorecard in a hidden frame and save the PDF straight to Downloads. */
+let pdfBusy = false;
+async function downloadPDF() {
+  if (!game || pdfBusy) return;
+  pdfBusy = true; toast('Making the PDF…');
+  const f = document.createElement('iframe');
+  f.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;height:1400px;border:0;pointer-events:none';
+  try {
+    f.src = await cardLink(); document.body.appendChild(f);
+    await new Promise((ok, no) => { f.onload = ok; setTimeout(() => no(new Error('timed out')), 20000); });
+    const w = f.contentWindow;
+    for (let i = 0; i < 100 && !(w.makePDF && w.document.querySelector('#app .pg')); i++) await new Promise(r => setTimeout(r, 150));
+    const blob = await w.makePDF(), T = game.setup.teams;
+    const name = `${T.home.name} v ${T.away.name} – Scorecard.pdf`.replace(/[\/\\:*?"<>|]/g, '-');
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 8000);
+    toast('PDF saved to Downloads');
+  } catch (e) { console.error(e); toast("Couldn't make the PDF – try Share scorecard"); }
+  finally { pdfBusy = false; setTimeout(() => f.remove(), 1500); }
 }
 function openCard() {
   const w = window.open('', '_blank');   // open now (inside the tap) so Safari doesn't block it
@@ -778,7 +799,7 @@ function renderScore() {
   else { const need = m.target - inn.runs, balls = m.overs * 6 - inn.legal; status = `Need ${need} off ${balls} · Req. rate ${(need / Math.max(1, balls) * 6).toFixed(2)} · Target ${m.target}`; }
 
   let prompt = '', blocked = true;
-  if (m.status === 'complete') prompt = `<div class="banner"><b>🏆 ${esc(m.result)}</b><button class="primary" data-act="card">Scorecard &amp; PDF</button><button class="ghost" data-act="backup">Download backup</button><button class="ghost" data-act="newmatch">New match</button></div>`;
+  if (m.status === 'complete') prompt = `<div class="banner"><b>🏆 ${esc(m.result)}</b><button class="primary" data-act="pdf">Download PDF</button><button class="ghost" data-act="card">Share scorecard</button><button class="ghost" data-act="backup">Download backup</button><button class="ghost" data-act="newmatch">New match</button></div>`;
   else if (m.status === 'break') prompt = `<div class="banner"><b>Innings break – ${esc(team(inn.bowl).name)} need ${m.target} to win.</b><button class="ghost" data-act="backup">Download backup</button><button class="primary" data-act="openers">Start 2nd innings</button></div>`;
   else if (m.needOpeners) prompt = `<div class="banner"><b>Pick the opening batters and bowler.</b><button class="primary" data-act="openers">Choose openers</button></div>`;
   else if (m.needBowler) prompt = `<div class="banner"><b>End of the over – who's bowling next?</b><button class="primary" data-act="bowler">Choose bowler</button></div>`;
@@ -857,6 +878,7 @@ app.addEventListener('click', e => {
   if (d.act === 'takeover') { takeover(); return; }
   if (d.act === 'restore') { pickBackup(); return; }
   if (d.act === 'backup') { downloadBackup(); return; }
+  if (d.act === 'pdf') { downloadPDF(); return; }
   if (!game) {   // setup screen
     if (d.bf) { draft.battingFirst = d.bf; saveDraft(); document.querySelectorAll('[data-bf]').forEach(x => x.classList.toggle('on', x === b)); }
     else if (d.clearlogo) { const t = draft.teams[d.clearlogo]; t.logo = ''; delete t.logoOriginal; delete t.logoClean; saveDraft(); renderSetup(); }
