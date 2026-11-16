@@ -257,7 +257,7 @@ function describe(a) {
     if (a.extra === 'lb') return `${a.runs} leg bye${s(a.runs)}`;
     return a.runs === 0 ? 'Dot ball' : a.runs === 4 ? 'FOUR' : a.runs === 6 ? 'SIX' : `${a.runs} run${s(a.runs)}`;
   }
-  return { load: 'Took over the score', open: 'Openers set', bowler: 'Bowler set', swap: 'Strike swapped', retire: 'Batter retired', end: 'Innings ended' }[a.t] || a.t;
+  return { rename: 'Name changed', load: 'Took over the score', open: 'Openers set', bowler: 'Bowler set', swap: 'Strike swapped', retire: 'Batter retired', end: 'Innings ended' }[a.t] || a.t;
 }
 // Overlay preferences, shared with the overlay at /prefs
 let prefs = { autoCards: true, autoHype: true, logoStyle: 'circle', ...LS.get('cc.prefs', {}) };
@@ -389,6 +389,7 @@ function moreSheet() {
     opt('end', 'End innings', 'declared / out of time', game && m.status === 'live' ? '' : 'disabled') +
     opt('logos', 'Fix team logos', 'remove logo backgrounds', game && (game.setup.teams.home.logo || game.setup.teams.away.logo) ? '' : 'disabled') +
     opt('newmatch', 'New match', 'close this one') +
+    opt('names', 'Edit player names', 'keeps the score', game ? '' : 'disabled') +
     opt('takeover', 'Take over from PlayHQ', 'carry on from the score on stream') +
     opt('settings', 'Settings', 'overlay link & database')), d => {
     closeSheet();
@@ -398,6 +399,7 @@ function moreSheet() {
       newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
       settings: settingsSheet,
       logos: fixMatchLogos,
+      names: namesSheet,
       takeover: () => confirmSheet('Close this match and carry on from the score on stream?', takeover),
     })[d.v]();
   });
@@ -450,6 +452,24 @@ function cloudBanner() {
   const s = cloudGame.setup, n = list(cloudGame.actions).length;
   return `<div class="banner"><b>A match is saved online: ${esc(s.teams.home.name)} v ${esc(s.teams.away.name)} (${n} entries).</b>
     <button class="primary" data-act="loadcloud">Continue it here</button><button class="link" data-act="ignorecloud">Ignore</button></div>`;
+}
+/* Fix player names mid-match. It's an action like a ball, so the score is untouched and Undo reverses it. */
+function namesSheet() {
+  const inn = m.inn, batT = team(inn.bat), bowlT = team(inn.bowl);
+  const bat = inn.batters.map(b => opt('bat:' + b.id, b.name, b.status === 'batting' ? 'batting now' : b.status === 'out' ? 'out' : '')).join('');
+  const bowl = list(bowlT.players).map((n, i) => opt('bowl:' + i, n)).join('');
+  openSheet('Edit player names', `<p class="hint">Tap a player to change their name. The score isn't touched.</p>
+    <h4>${esc(batT.name)} (batting)</h4>${opts(bat)}<h4>${esc(bowlT.name)} (bowling)</h4>${opts(bowl)}`, d => {
+    const [side, n] = String(d.v).split(':'), k = side === 'bat' ? inn.bat : inn.bowl;
+    const from = side === 'bat' ? inn.batters[+n].name : list(team(k).players)[+n];
+    const to = (window.prompt(`New name for ${from}`, from) || '').trim();
+    if (!to || to === from) return;
+    const pl = list(game.setup.teams[k].players), i = side === 'bat' ? pl.indexOf(from) : +n;
+    if (i >= 0) pl[i] = to; game.setup.teams[k].players = pl;
+    game.actions.push({ t: 'rename', team: k, from, to, ...(side === 'bat' ? { id: +n } : {}) }); game.seq = (game.seq || 0) + 1;
+    rebuild(); save(); publish('other', null, true);
+    toast(`${from} → ${to}`); namesSheet(); render();
+  });
 }
 /* Take over from PlayHQ: start scoring from whatever the overlay is showing now (the relay's last score),
    e.g. when PlayHQ won't let the game go past 20 overs. */
