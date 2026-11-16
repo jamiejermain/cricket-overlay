@@ -389,6 +389,8 @@ function moreSheet() {
     opt('end', 'End innings', 'declared / out of time', game && m.status === 'live' ? '' : 'disabled') +
     opt('logos', 'Fix team logos', 'remove logo backgrounds', game && (game.setup.teams.home.logo || game.setup.teams.away.logo) ? '' : 'disabled') +
     opt('newmatch', 'New match', 'close this one') +
+    opt('backup', 'Download backup', 'save this match as a file', game ? '' : 'disabled') +
+    opt('restore', 'Load a backup', 'from a backup file') +
     opt('card', 'Scorecard & PDF', 'share or save the full card', game ? '' : 'disabled') +
     opt('names', 'Edit player names', 'keeps the score', game ? '' : 'disabled') +
     opt('takeover', 'Take over from PlayHQ', 'carry on from the score on stream') +
@@ -401,7 +403,7 @@ function moreSheet() {
       settings: settingsSheet,
       logos: fixMatchLogos,
       names: namesSheet,
-      card: openCard,
+      card: openCard, backup: downloadBackup, restore: pickBackup,
       takeover: () => confirmSheet('Close this match and carry on from the score on stream?', takeover),
     })[d.v]();
   });
@@ -455,6 +457,32 @@ function cloudBanner() {
   return `<div class="banner"><b>A match is saved online: ${esc(s.teams.home.name)} v ${esc(s.teams.away.name)} (${n} entries).</b>
     <button class="primary" data-act="loadcloud">Continue it here</button><button class="link" data-act="ignorecloud">Ignore</button></div>`;
 }
+/* Backup file: the whole match (setup + every ball) saved as a file, and loaded back from one. */
+function downloadBackup() {
+  if (!game) return toast('No match to back up');
+  const T = game.setup.teams, i = m.inn, d = new Date();
+  const name = `cricket-backup ${T.home.short || T.home.name} v ${T.away.short || T.away.name} ${i.runs}-${i.wkts} ${oversStr(i.legal)}ov ${d.getHours()}h${String(d.getMinutes()).padStart(2, '0')}.json`.replace(/[\/\\:*?"<>|]/g, '-');
+  const blob = new Blob([JSON.stringify({ kind: 'cricket-scorer-backup', v: 1, saved: Date.now(), game })], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 5000);
+  toast('Backup saved to Downloads');
+}
+const restoreInput = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
+restoreInput.style.display = 'none'; document.body.appendChild(restoreInput);
+function pickBackup() { restoreInput.value = ''; restoreInput.click(); }
+restoreInput.onchange = async () => {
+  const f = restoreInput.files[0]; if (!f) return;
+  let b = null; try { b = JSON.parse(await f.text()); } catch (e) {}
+  const g = b && b.game;
+  if (!g || !g.setup || !g.actions) return toast("That isn't a scorer backup file");
+  let r; try { r = replay(normaliseSetup(g.setup), g.actions); } catch (e) { return toast("Couldn't read that backup"); }
+  const i = r.m.inn, T = g.setup.teams, at = new Date(b.saved).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  confirmSheet(`Load backup from ${at}? ${T[i.bat].name} ${i.runs}-${i.wkts} (${oversStr(i.legal)} ov). It replaces the match here and on the stream.`, () => {
+    game = { setup: normaliseSetup(g.setup), actions: list(g.actions), seq: Math.max((game && game.seq) || 0, g.seq || 0) + 1 };
+    cloudGame = null; rebuild(); save(); publish('other', null, true);
+    render(); autoPrompt(); toast('Backup loaded');
+  });
+};
 /* Scorecard & PDF: card.html with the whole match packed into the link (#d=…), so it can be shared and
    still works after the next match. Logos are shrunk to keep the link short. */
 const b64u = b => { let s = ''; b.forEach(c => (s += String.fromCharCode(c))); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
@@ -542,6 +570,10 @@ function takeoverCard() {
     <p class="hint">Carry on scoring here from the score that's on stream now (e.g. PlayHQ stopped at 20 overs).</p>
     <button class="ghost" data-act="takeover">Continue from the score on stream</button></section>`;
 }
+function restoreCard() {
+  return `<section class="card"><h2>Load a backup</h2><p class="hint">Carry on from a backup file you downloaded earlier.</p>
+    <button class="ghost" data-act="restore">Load a backup file</button></section>`;
+}
 async function takeover() {
   let live = null;
   const loc = LS.get('cc.phq.last');   // the PlayHQ relay on this device saves its latest score here
@@ -589,7 +621,7 @@ const keeperOpts = t => t.players.length ? t.players.map((n, i) => `<option valu
 function renderSetup() {
   if (!draft) draft = LS.get('cc.lastSetup') || defaultSetup();
   const d = draft;
-  app.innerHTML = `${cloudBanner()}${takeoverCard()}
+  app.innerHTML = `${cloudBanner()}${takeoverCard()}${restoreCard()}
     <section class="card"><h2>New match</h2>
       <label>Match title <span class="hint">shown on the stream</span><input data-m="title" value="${esc(d.match.title)}" placeholder="U12 Division 2 · Round 5"></label>
       <label>Ground <span class="hint">optional, shown on the match summary</span><input data-m="venue" value="${esc(d.match.venue || '')}" placeholder="Kaleen Oval"></label>
@@ -746,8 +778,8 @@ function renderScore() {
   else { const need = m.target - inn.runs, balls = m.overs * 6 - inn.legal; status = `Need ${need} off ${balls} · Req. rate ${(need / Math.max(1, balls) * 6).toFixed(2)} · Target ${m.target}`; }
 
   let prompt = '', blocked = true;
-  if (m.status === 'complete') prompt = `<div class="banner"><b>🏆 ${esc(m.result)}</b><button class="primary" data-act="card">Scorecard &amp; PDF</button><button class="ghost" data-act="newmatch">New match</button></div>`;
-  else if (m.status === 'break') prompt = `<div class="banner"><b>Innings break – ${esc(team(inn.bowl).name)} need ${m.target} to win.</b><button class="primary" data-act="openers">Start 2nd innings</button></div>`;
+  if (m.status === 'complete') prompt = `<div class="banner"><b>🏆 ${esc(m.result)}</b><button class="primary" data-act="card">Scorecard &amp; PDF</button><button class="ghost" data-act="backup">Download backup</button><button class="ghost" data-act="newmatch">New match</button></div>`;
+  else if (m.status === 'break') prompt = `<div class="banner"><b>Innings break – ${esc(team(inn.bowl).name)} need ${m.target} to win.</b><button class="ghost" data-act="backup">Download backup</button><button class="primary" data-act="openers">Start 2nd innings</button></div>`;
   else if (m.needOpeners) prompt = `<div class="banner"><b>Pick the opening batters and bowler.</b><button class="primary" data-act="openers">Choose openers</button></div>`;
   else if (m.needBowler) prompt = `<div class="banner"><b>End of the over – who's bowling next?</b><button class="primary" data-act="bowler">Choose bowler</button></div>`;
   else blocked = false;
@@ -823,6 +855,8 @@ app.addEventListener('click', e => {
   if (d.act === 'loadcloud') { const s = cloudGame; game = { setup: normaliseSetup(s.setup), actions: list(s.actions), seq: s.seq || 0 }; cloudGame = null; rebuild(); save(); render(); autoPrompt(); return; }
   if (d.act === 'ignorecloud') { cloudGame = null; render(); return; }
   if (d.act === 'takeover') { takeover(); return; }
+  if (d.act === 'restore') { pickBackup(); return; }
+  if (d.act === 'backup') { downloadBackup(); return; }
   if (!game) {   // setup screen
     if (d.bf) { draft.battingFirst = d.bf; saveDraft(); document.querySelectorAll('[data-bf]').forEach(x => x.classList.toggle('on', x === b)); }
     else if (d.clearlogo) { const t = draft.teams[d.clearlogo]; t.logo = ''; delete t.logoOriginal; delete t.logoClean; saveDraft(); renderSetup(); }
