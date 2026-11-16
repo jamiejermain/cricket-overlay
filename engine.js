@@ -14,6 +14,7 @@
 //    { t:'swap' }                                  change strike
 //    { t:'retire', who, next? }                    retired not out
 //    { t:'end' }                                   end the innings early
+//    { t:'load', state }                           take over mid-match from a published snapshot (e.g. PlayHQ)
 // ─────────────────────────────────────────────────────────────
 (function () {
   const other = k => (k === 'home' ? 'away' : 'home');
@@ -82,6 +83,7 @@
           this.bringIn(slot, a.next); return null;
         }
         case 'end': this.endInnings(); return null;
+        case 'load': this.load(a.state); return null;
         case 'ball': return this.status === 'live' ? this.bowl(a) : null;
       }
       return null;
@@ -153,6 +155,28 @@
       if (inningsComplete) this.endInnings();
       const credited = offBat ? runs : 0;
       return { runs: total, extra: ex, boundary, wicket, credited, batter: { ...st }, overComplete, inningsComplete, freeHit: inn.freeHit, wasFreeHit };
+    }
+
+    // Take over mid-match from a published snapshot (e.g. the PlayHQ relay's). The setup's overs can be
+    // more than the snapshot's (PlayHQ stuck on 20, game going to 30), so an innings closed on overs reopens.
+    load(snap) {
+      const f = fromState(this.cfg, JSON.parse(JSON.stringify(snap || {})));
+      this.innings = f.innings; this.current = Math.min(f.current, f.innings.length - 1);
+      this.status = f.status; this.result = ''; this.winner = null;
+      // An empty 2nd innings (opened but nobody batted yet) goes back to the innings break.
+      if (this.current === 1 && !this.inn.legal && !this.inn.order.length) { this.innings.pop(); this.current = 0; }
+      const inn = this.inn;
+      const allOut = inn.wkts >= this.maxWkts(inn) && inn.order.length > 1;
+      const chased = this.current === 1 && inn.runs >= this.target;
+      const reopen = !allOut && !chased && inn.legal < this.overs * 6;
+      if (reopen) {
+        inn.complete = false; this.status = 'live';
+        const atCrease = inn.batters.filter(b => b.status === 'batting').map(b => b.id);
+        if (!atCrease.includes(inn.striker)) inn.striker = atCrease.find(id => id !== inn.nonStriker) ?? -1;
+        if (!atCrease.includes(inn.nonStriker)) inn.nonStriker = atCrease.find(id => id !== inn.striker) ?? -1;
+        inn.needBowler = inn.bowler < 0 || !!inn.needBowler || (inn.legal > 0 && inn.legal % 6 === 0);
+        if (!inn.needBowler) inn.overStartRuns = inn.bowlers[inn.bowler].runs;
+      } else { inn.complete = true; inn.freeHit = false; if (this.current === 0) this.status = 'break'; else { this.status = 'complete'; this.computeResult(); } }
     }
 
     computeResult() {

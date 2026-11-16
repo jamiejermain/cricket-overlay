@@ -240,7 +240,7 @@ function commit(a) {
   render(); autoPrompt();
 }
 function undo() {
-  if (!game || !game.actions.length) return toast('Nothing to undo');
+  if (!game || !game.actions.length || (game.actions.length === 1 && game.actions[0].t === 'load')) return toast('Nothing to undo');
   const a = game.actions.pop(); game.seq = (game.seq || 0) + 1;
   rebuild(); save(); publish('undo');
   toast('Undone: ' + describe(a));
@@ -257,7 +257,7 @@ function describe(a) {
     if (a.extra === 'lb') return `${a.runs} leg bye${s(a.runs)}`;
     return a.runs === 0 ? 'Dot ball' : a.runs === 4 ? 'FOUR' : a.runs === 6 ? 'SIX' : `${a.runs} run${s(a.runs)}`;
   }
-  return { open: 'Openers set', bowler: 'Bowler set', swap: 'Strike swapped', retire: 'Batter retired', end: 'Innings ended' }[a.t] || a.t;
+  return { load: 'Took over the score', open: 'Openers set', bowler: 'Bowler set', swap: 'Strike swapped', retire: 'Batter retired', end: 'Innings ended' }[a.t] || a.t;
 }
 // Overlay preferences, shared with the overlay at /prefs
 let prefs = { autoCards: true, autoHype: true, logoStyle: 'circle', ...LS.get('cc.prefs', {}) };
@@ -389,6 +389,7 @@ function moreSheet() {
     opt('end', 'End innings', 'declared / out of time', game && m.status === 'live' ? '' : 'disabled') +
     opt('logos', 'Fix team logos', 'remove logo backgrounds', game && (game.setup.teams.home.logo || game.setup.teams.away.logo) ? '' : 'disabled') +
     opt('newmatch', 'New match', 'close this one') +
+    opt('takeover', 'Take over from PlayHQ', 'carry on from the score on stream') +
     opt('settings', 'Settings', 'overlay link & database')), d => {
     closeSheet();
     ({
@@ -397,6 +398,7 @@ function moreSheet() {
       newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
       settings: settingsSheet,
       logos: fixMatchLogos,
+      takeover: () => confirmSheet('Close this match and carry on from the score on stream?', takeover),
     })[d.v]();
   });
 }
@@ -449,6 +451,36 @@ function cloudBanner() {
   return `<div class="banner"><b>A match is saved online: ${esc(s.teams.home.name)} v ${esc(s.teams.away.name)} (${n} entries).</b>
     <button class="primary" data-act="loadcloud">Continue it here</button><button class="link" data-act="ignorecloud">Ignore</button></div>`;
 }
+/* Take over from PlayHQ: start scoring from whatever the overlay is showing now (the relay's last score),
+   e.g. when PlayHQ won't let the game go past 20 overs. */
+function takeoverCard() {
+  if (!sync || sync.mode !== 'cloud') return '';
+  return `<section class="card"><h2>Taking over from PlayHQ?</h2>
+    <p class="hint">Carry on scoring here from the score that's on stream now (e.g. PlayHQ stopped at 20 overs).</p>
+    <button class="ghost" data-act="takeover">Continue from the score on stream</button></section>`;
+}
+async function takeover() {
+  if (sync.mode !== 'cloud') return toast('Needs the server connection');
+  let live = null;
+  try { live = await sync.get('live'); } catch (e) {}
+  const st = live && live.tick && live.tick.state;
+  if (!live || !live.setup || !st || !list(st.innings).length) return toast("Couldn't find a score on stream");
+  const setup = normaliseSetup(deep(live.setup)), inns = list(st.innings), inn = inns[Math.min(st.current || 0, inns.length - 1)];
+  const was = +setup.match.oversPerInnings || 20, T = setup.teams;
+  const choices = [...new Set([was, 25, 30, 35, 40, 50])].filter(v => v * 6 > inn.legal || v === was).sort((a, b) => a - b);
+  openSheet('Take over the score', `<p class="hint">On stream now: <b>${esc(T[inn.bat].name)} ${inn.runs}-${inn.wkts}</b> (${oversStr(inn.legal)} overs) v ${esc(T[inn.bowl].name)}.</p>
+    <p class="hint"><b>First press “Pause sending” on the PlayHQ relay</b>, or it will keep overwriting your scoring.</p>
+    <p class="hint">How many overs per innings?</p>` + opts(choices.map(v => opt(v, `${v} overs`, v === was ? 'as set on PlayHQ' : '')).join('')),
+  d => {
+    closeSheet();
+    setup.match.oversPerInnings = +d.v; setup.from = setup.source || 'stream'; delete setup.source;
+    setup.id = rid(8); setup.created = Date.now();
+    game = { setup, actions: [{ t: 'load', state: st }], seq: 1 };
+    cloudGame = null; rebuild(); save(); publish('other', null, true);
+    toast(`Taken over – ${d.v} overs`);
+    render(); autoPrompt();
+  });
+}
 function teamEditor(k) {
   const t = draft.teams[k], lib = Object.keys(library);
   return `<section class="card team" data-team="${k}" style="--tp:${t.primary};--ta:${t.accent}">
@@ -473,7 +505,7 @@ const keeperOpts = t => t.players.length ? t.players.map((n, i) => `<option valu
 function renderSetup() {
   if (!draft) draft = LS.get('cc.lastSetup') || defaultSetup();
   const d = draft;
-  app.innerHTML = `${cloudBanner()}
+  app.innerHTML = `${cloudBanner()}${takeoverCard()}
     <section class="card"><h2>New match</h2>
       <label>Match title <span class="hint">shown on the stream</span><input data-m="title" value="${esc(d.match.title)}" placeholder="U12 Division 2 · Round 5"></label>
       <label>Ground <span class="hint">optional, shown on the match summary</span><input data-m="venue" value="${esc(d.match.venue || '')}" placeholder="Kaleen Oval"></label>
@@ -706,6 +738,7 @@ app.addEventListener('click', e => {
   const d = b.dataset;
   if (d.act === 'loadcloud') { const s = cloudGame; game = { setup: normaliseSetup(s.setup), actions: list(s.actions), seq: s.seq || 0 }; cloudGame = null; rebuild(); save(); render(); autoPrompt(); return; }
   if (d.act === 'ignorecloud') { cloudGame = null; render(); return; }
+  if (d.act === 'takeover') { takeover(); return; }
   if (!game) {   // setup screen
     if (d.bf) { draft.battingFirst = d.bf; saveDraft(); document.querySelectorAll('[data-bf]').forEach(x => x.classList.toggle('on', x === b)); }
     else if (d.clearlogo) { const t = draft.teams[d.clearlogo]; t.logo = ''; delete t.logoOriginal; delete t.logoClean; saveDraft(); renderSetup(); }
