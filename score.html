@@ -389,6 +389,7 @@ function moreSheet() {
     opt('end', 'End innings', 'declared / out of time', game && m.status === 'live' ? '' : 'disabled') +
     opt('logos', 'Fix team logos', 'remove logo backgrounds', game && (game.setup.teams.home.logo || game.setup.teams.away.logo) ? '' : 'disabled') +
     opt('newmatch', 'New match', 'close this one') +
+    opt('card', 'Scorecard & PDF', 'share or save the full card', game ? '' : 'disabled') +
     opt('names', 'Edit player names', 'keeps the score', game ? '' : 'disabled') +
     opt('takeover', 'Take over from PlayHQ', 'carry on from the score on stream') +
     opt('settings', 'Settings', 'overlay link & database')), d => {
@@ -400,6 +401,7 @@ function moreSheet() {
       settings: settingsSheet,
       logos: fixMatchLogos,
       names: namesSheet,
+      card: openCard,
       takeover: () => confirmSheet('Close this match and carry on from the score on stream?', takeover),
     })[d.v]();
   });
@@ -452,6 +454,38 @@ function cloudBanner() {
   const s = cloudGame.setup, n = list(cloudGame.actions).length;
   return `<div class="banner"><b>A match is saved online: ${esc(s.teams.home.name)} v ${esc(s.teams.away.name)} (${n} entries).</b>
     <button class="primary" data-act="loadcloud">Continue it here</button><button class="link" data-act="ignorecloud">Ignore</button></div>`;
+}
+/* Scorecard & PDF: card.html with the whole match packed into the link (#d=…), so it can be shared and
+   still works after the next match. Logos are shrunk to keep the link short. */
+const b64u = b => { let s = ''; b.forEach(c => (s += String.fromCharCode(c))); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const pipeBytes = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+function shrinkLogo(src, max = 140) {
+  if (!src || !src.startsWith('data:')) return Promise.resolve(src || '');
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => { const k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      const w = c.toDataURL('image/webp', 0.8); res(w.startsWith('data:image/webp') ? w : c.toDataURL('image/png')); };
+    im.onerror = () => res(''); im.src = src;
+  });
+}
+async function cardLink() {
+  const S = game.setup, teams = {};
+  for (const k of ['home', 'away']) { const t = S.teams[k]; teams[k] = { name: t.name, short: t.short, primary: t.primary, accent: t.accent, logo: await shrinkLogo(t.logo) }; }
+  const st = deep(toState(m));
+  st.innings = list(st.innings).map(i => {
+    for (const f of ['thisOver', 'bowlHist', '_lastBall', '_balls', 'overStartRuns', 'needBowler', 'freeHit', 'pships', 'striker', 'nonStriker', 'bowler']) delete i[f];
+    i.batters = list(i.batters).map(({ pid, wtype, ...b }) => b);
+    return i;
+  });
+  const data = { setup: { match: S.match, teams, battingFirst: S.battingFirst }, state: st };
+  const z = await pipeBytes(new TextEncoder().encode(JSON.stringify(data)), new CompressionStream('deflate-raw'));
+  return new URL('card.html', location.href).href.split('?')[0] + '#d=' + b64u(z);
+}
+function openCard() {
+  const w = window.open('', '_blank');   // open now (inside the tap) so Safari doesn't block it
+  cardLink().then(u => { if (w) w.location.href = u; else location.href = u; })
+    .catch(e => { if (w) w.close(); toast("Couldn't make the scorecard"); console.error(e); });
 }
 /* Fix player names mid-match. It's an action like a ball, so the score is untouched and Undo reverses it. */
 function namesSheet() {
@@ -712,7 +746,7 @@ function renderScore() {
   else { const need = m.target - inn.runs, balls = m.overs * 6 - inn.legal; status = `Need ${need} off ${balls} · Req. rate ${(need / Math.max(1, balls) * 6).toFixed(2)} · Target ${m.target}`; }
 
   let prompt = '', blocked = true;
-  if (m.status === 'complete') prompt = `<div class="banner"><b>🏆 ${esc(m.result)}</b><button class="primary" data-act="newmatch">New match</button></div>`;
+  if (m.status === 'complete') prompt = `<div class="banner"><b>🏆 ${esc(m.result)}</b><button class="primary" data-act="card">Scorecard &amp; PDF</button><button class="ghost" data-act="newmatch">New match</button></div>`;
   else if (m.status === 'break') prompt = `<div class="banner"><b>Innings break – ${esc(team(inn.bowl).name)} need ${m.target} to win.</b><button class="primary" data-act="openers">Start 2nd innings</button></div>`;
   else if (m.needOpeners) prompt = `<div class="banner"><b>Pick the opening batters and bowler.</b><button class="primary" data-act="openers">Choose openers</button></div>`;
   else if (m.needBowler) prompt = `<div class="banner"><b>End of the over – who's bowling next?</b><button class="primary" data-act="bowler">Choose bowler</button></div>`;
@@ -804,7 +838,7 @@ app.addEventListener('click', e => {
   if (d.cmd) return sendCmd(d.cmd, b.textContent);
   ({
     wicket: wicketSheet, undo, more: moreSheet, break: toggleBreak, openers: openersSheet, bowler: () => bowlerSheet(),
-    swap: () => commit({ t: 'swap' }),
+    swap: () => commit({ t: 'swap' }), card: openCard,
     newmatch: () => confirmSheet('Close this match and set up a new one?', () => { game = null; LS.set('cc.game', null); draft = null; rebuild(); render(); }),
   })[d.act]?.();
 });
