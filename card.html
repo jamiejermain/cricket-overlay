@@ -28,7 +28,7 @@
 
   /* hero */
   .hero { position:relative; overflow:hidden; border-radius:22px; color:#fff; padding:26px 26px 22px;
-    background:linear-gradient(115deg, var(--a) 0%, color-mix(in srgb, var(--a) 55%, #0b0f26) 46%, color-mix(in srgb, var(--b) 55%, #0b0f26) 54%, var(--b) 100%); }
+    background:linear-gradient(115deg, var(--a) 0%, var(--a2) 46%, var(--b2) 54%, var(--b) 100%); }
   .hero::after { content:''; position:absolute; inset:0; background:radial-gradient(120% 90% at 50% 0%, rgba(255,255,255,.16), transparent 60%),
     repeating-linear-gradient(115deg, rgba(255,255,255,.04) 0 2px, transparent 2px 14px); pointer-events:none; }
   .meta { position:relative; z-index:1; text-align:center; font-size:12px; letter-spacing:1.4px; text-transform:uppercase; opacity:.85; font-weight:600; }
@@ -62,7 +62,7 @@
   .legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
 
   /* innings */
-  .inn-head { display:flex; align-items:center; gap:12px; padding:14px 16px; color:#fff; background:linear-gradient(100deg, var(--c), color-mix(in srgb, var(--c) 60%, #0b0f26)); }
+  .inn-head { display:flex; align-items:center; gap:12px; padding:14px 16px; color:#fff; background:linear-gradient(100deg, var(--c), var(--c2)); }
   .inn-head .lg { width:40px; height:40px; border-radius:50%; background:#fff; overflow:hidden; display:grid; place-items:center; font:800 14px var(--num); color:var(--navy); flex:none; }
   .inn-head .lg img { width:100%; height:100%; object-fit:contain; }
   .inn-head .nm { flex:1; min-width:0; }
@@ -100,6 +100,26 @@
     .hide-sm { display:none; }
     td, th { padding-left:5px; padding-right:5px; }
   }
+  /* .pdf = the copy drawn into the PDF (same look as printing) */
+  body.pdf { background:#fff; font-size:12.5px; }
+  body.pdf .tools { display:none; }
+  body.pdf main { max-width:none; width:860px; padding:0; }
+  body.pdf .panel, body.pdf .stat { box-shadow:none; border:1px solid var(--line); }
+  body.pdf .pg { padding:4px; }
+  body.pdf td { padding-top:4px; padding-bottom:4px; }
+  body.pdf td.nm .how { display:inline; margin-left:8px; font-size:11px; }
+  body.pdf td.r { font-size:16px; }
+  body.pdf .inn-head { padding:10px 14px; }
+  body.pdf .lines { padding:6px 16px 8px; }
+  body.pdf .ps { display:grid; grid-template-columns:1fr 1fr; column-gap:28px; padding-bottom:10px; }
+  body.pdf .p { margin:2px 0; }
+  body.pdf .hl { grid-template-columns:repeat(4,1fr); } body.pdf .charts { grid-template-columns:1fr 1fr; }
+  body.pdf .hide-sm { display:table-cell; }
+  body.pdf .tscore { font-size:44px; } body.pdf .tname { font-size:22px; } body.pdf .logo { width:76px; height:76px; }
+  body.pdf td, body.pdf th { padding-left:8px; padding-right:8px; }
+  body.pdf td:first-child, body.pdf th:first-child { padding-left:16px; } body.pdf td:last-child, body.pdf th:last-child { padding-right:16px; }
+  .cover { position:fixed; inset:0; z-index:50; display:grid; place-items:center; background:rgba(16,20,46,.9); color:#fff; font:700 18px Inter,sans-serif; }
+  .busy { opacity:.6; pointer-events:none; }
   @page { size:A4; margin:10mm; }
   @media print {
     html, body { background:#fff; font-size:11.5px; }
@@ -145,6 +165,13 @@ async function loadMatch() {
   return null;
 }
 
+// Mix a team colour toward deep navy (k = how much of the team colour to keep).
+function shade(hex, k) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(hex || '').trim()); if (!m) return '#0b0f26';
+  let h = m[1]; if (h.length === 3) h = h.replace(/./g, c => c + c);
+  const n = [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)), d = [11, 15, 38];
+  return '#' + n.map((v, i) => Math.round(v * k + d[i] * (1 - k)).toString(16).padStart(2, '0')).join('');
+}
 const rate = (r, b) => (b ? (r / (b / 6)).toFixed(2) : '–');
 const sr = (r, b) => (b ? (r / b * 100).toFixed(1) : '–');
 const initials = t => esc((t.short || t.name || '?').slice(0, 3).toUpperCase());
@@ -226,7 +253,7 @@ function inningsHTML(m, inn, idx, T) {
   const ps = partnerships(inn), maxP = Math.max(1, ...ps.map(p => p.runs));
   const allOut = inn.wkts >= Math.max(1, inn.batters.length - 1);
   const wk = allOut ? 'all out' : `${inn.wkts} wkt${inn.wkts === 1 ? '' : 's'}`;
-  return `<section class="panel innings" style="--c:${esc(c)}">
+  return `<section class="panel innings pg" style="--c:${esc(c)};--c2:${shade(c, .6)}">
     <div class="inn-head"><span class="lg">${logo(bat)}</span><div class="nm"><span>${ordinal(idx + 1)} innings · batting</span><b>${esc(bat.name)}</b></div>
       <div class="sc">${inn.runs}${allOut ? '' : '/' + inn.wkts}<small>${oversStr(inn.legal)} overs · RR ${rate(inn.runs, inn.legal)}</small></div></div>
     <table><thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th class="hide-sm">SR</th></tr></thead><tbody>${rows}
@@ -274,7 +301,10 @@ function render(data) {
   document.title = `${T.home.name} v ${T.away.name} – Scorecard`;
   document.documentElement.style.setProperty('--a', T[first].primary);
   document.documentElement.style.setProperty('--b', T[second].primary);
+  document.documentElement.style.setProperty('--a2', shade(T[first].primary, .55));
+  document.documentElement.style.setProperty('--b2', shade(T[second].primary, .55));
   $('#app').innerHTML = `
+    <div class="pg">
     <section class="hero"><div class="meta">${meta}</div>
       <div class="vs">${side(first)}<span class="mid">V</span>${side(second)}</div>
       <div class="result">${esc(status)}</div>${mt.toss ? `<div class="toss">${esc(mt.toss)}</div>` : ''}</section>
@@ -282,12 +312,54 @@ function render(data) {
     <div class="charts">
       <section class="panel"><h3>Score worm</h3>${wormSVG(m, T)}<div class="legend">${legend}<span>○ wicket</span></div></section>
       <section class="panel"><h3>Runs per over</h3>${manhattanSVG(m, T)}<div class="legend">${legend}<span><i style="background:#e5383b;border-radius:50%"></i>wicket</span></div></section>
-    </div>
+    </div></div>
     ${m.innings.map((inn, i) => inningsHTML(m, inn, i, T)).join('')}
     <footer>${esc(T.home.name)} v ${esc(T.away.name)}${when ? ' · ' + esc(when) : ''}</footer>`;
 }
 
-$('#pdf').onclick = () => window.print();
+// Save as PDF: draw each page block to an image and lay them onto A4 pages, then download the file.
+// (Doesn't rely on the browser's print, which comes out blank in some browsers.)
+const loadScript = src => new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); });
+async function makePDF() {
+    if (!window.html2canvas) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+    if (!window.jspdf) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    await document.fonts.ready;
+    const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', compress: true }), PW = 210, PH = 297, M = 10;
+    const blocks = [...document.querySelectorAll('#app .pg')];
+    // Lay the page out at a fixed A4-ish width while drawing (a cover hides the switch).
+    const cover = document.createElement('div'); cover.className = 'cover'; cover.textContent = 'Making your PDF…';
+    document.body.appendChild(cover); document.body.classList.add('pdf');
+    try {
+    for (let i = 0; i < blocks.length; i++) {
+      const c = await html2canvas(blocks[i], { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false,
+        ignoreElements: el => el.classList && el.classList.contains('cover') });
+      let w = PW - 2 * M, h = c.height * w / c.width;
+      if (h > PH - 2 * M) { h = PH - 2 * M; w = c.width * h / c.height; }
+      if (i) pdf.addPage();
+      pdf.addImage(c.toDataURL('image/jpeg', 0.92), 'JPEG', (PW - w) / 2, M, w, h);
+    }
+    } finally { document.body.classList.remove('pdf'); cover.remove(); }
+    pdf.setFontSize(8); pdf.setTextColor(93, 100, 136);
+    pdf.text($('footer') ? $('footer').textContent : '', PW / 2, PH - 5, { align: 'center' });
+    return pdf.output('blob');
+}
+async function savePDF() {
+  const btn = $('#pdf'), label = btn.textContent;
+  btn.textContent = 'Making PDF…'; btn.classList.add('busy');
+  try {
+    const blob = await makePDF(), name = document.title.replace(/[\/\\:*?"<>|]/g, '-') + '.pdf';
+    const file = new File([blob], name, { type: 'application/pdf' });
+    // iPad / iPhone: the share sheet (Save to Files, Mail, WhatsApp…). Elsewhere: a normal download.
+    if (navigator.maxTouchPoints > 1 && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: document.title }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 8000);
+  } catch (e) {
+    console.error(e); alert("Couldn't make the PDF here. Try again, or use your browser's Print → Save as PDF.");
+  } finally { btn.textContent = label; btn.classList.remove('busy'); }
+}
+$('#pdf').onclick = savePDF;
 $('#share').onclick = async () => {
   const url = location.href, title = document.title;
   try { if (navigator.share) { await navigator.share({ title, url }); return; } } catch (e) { if (e.name === 'AbortError') return; }
