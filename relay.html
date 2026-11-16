@@ -223,6 +223,7 @@ function publishFrom(g) {
   // Result text, worked out the same way the scorer does.
   if (state.status === 'complete' && state.innings.length === 2) { const m = fromState(setup, state); m.computeResult(); state.result = m.result; state.winner = m.winner; }
   else if (state.status === 'complete') state.result = 'MATCH COMPLETE';
+  LS.set('cc.phq.last', { setup, state, at: Date.now() });   // the scorer's "Take over from PlayHQ" reads this on the same device
   const ev = PlayHQ.diff(lastState, state, cache);
   showScore(setup, state);
   if (!ev) return null;

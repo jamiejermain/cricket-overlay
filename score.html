@@ -460,9 +460,10 @@ function takeoverCard() {
     <button class="ghost" data-act="takeover">Continue from the score on stream</button></section>`;
 }
 async function takeover() {
-  if (sync.mode !== 'cloud') return toast('Needs the server connection');
   let live = null;
-  try { live = await sync.get('live'); } catch (e) {}
+  const loc = LS.get('cc.phq.last');   // the PlayHQ relay on this device saves its latest score here
+  if (loc && loc.setup && loc.state && Date.now() - loc.at < 3 * 3600e3) live = { setup: loc.setup, tick: { state: loc.state } };
+  else try { live = await sync.get('live'); } catch (e) {}
   const st = live && live.tick && live.tick.state;
   if (!live || !live.setup || !st || !list(st.innings).length) return toast("Couldn't find a score on stream");
   const setup = normaliseSetup(deep(live.setup)), inns = list(st.innings), inn = inns[Math.min(st.current || 0, inns.length - 1)];
