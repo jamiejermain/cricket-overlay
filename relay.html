@@ -94,6 +94,8 @@ let sync = null, matchInfo = null;
 // Live connection (opened by the bookmark in the PlayHQ tab).
 // Before PlayHQ scoring starts: a pre-game screen (teams, toss, openers) on the overlay.
 let preMode = false, preSent = '';
+// PlayHQ has the game set up (toss, line-ups) but no ball bowled yet: keep the pre-game screen up, using PlayHQ's details.
+const PRE = { pre: true }; let phqPre = null;
 let live = false, liveSeen = false, pushed = null, pushes = 0, wakeUp = null, followUp = false;
 
 function log(s) { logLines.unshift(new Date().toLocaleTimeString() + '  ' + s); logLines = logLines.slice(0, 30); const el = $('#log'); if (el) el.textContent = logLines.join('\n'); }
@@ -212,7 +214,8 @@ function tossLine() {
 function publishPre(force) {
   if (!rp.on) return;
   const title = / v /.test(qp.get('title') || '') ? qp.get('title') : '';
-  const pre = { teams: { home: teamFor('home'), away: teamFor('away') }, info: matchInfo || {}, title, toss: tossLine(), openers: rp.pre.openers.trim() };
+  const P = phqPre || {}, xi = P.lineups && (P.lineups.home.length || P.lineups.away.length) ? P.lineups : null;
+  const pre = { teams: { home: teamFor('home'), away: teamFor('away') }, info: matchInfo || {}, title, toss: tossLine() || P.toss || '', openers: rp.pre.openers.trim(), ...(xi ? { lineups: xi } : {}) };
   const j = JSON.stringify(pre); if (j === preSent && !force) return;
   preSent = j; sync.put('live', { pre: { ...pre, at: Date.now() } }); log('Pre-game screen sent to the overlay');
 }
@@ -223,6 +226,11 @@ function publishFrom(g) {
   // Result text, worked out the same way the scorer does.
   if (state.status === 'complete' && state.innings.length === 2) { const m = fromState(setup, state); m.computeResult(); state.result = m.result; state.winner = m.winner; }
   else if (state.status === 'complete') state.result = 'MATCH COMPLETE';
+  const i0 = state.innings[0] || {};
+  if (!lastState && state.status === 'live' && state.innings.length === 1 && !i0.legal && !i0.runs && !i0.wkts && !i0._balls) {
+    phqPre = { toss: setup.match.toss || '', lineups: { home: setup.teams.home.players || [], away: setup.teams.away.players || [] } };
+    return PRE;
+  }
   LS.set('cc.phq.last', { setup, state, at: Date.now() });   // the scorer's "Take over from PlayHQ" reads this on the same device
   const ev = PlayHQ.diff(lastState, state, cache);
   showScore(setup, state);
@@ -260,6 +268,12 @@ async function loop() {
         preMode = true; srcOk = true; lastErr = ''; fails = 0; publishPre();
         pill(rp.on ? 'ok' : 'wait', rp.on ? 'Pre-game screen on' : 'Paused'); renderStatus();
         await tick(POLL_MS * 2); continue;
+      }
+      if (ev === PRE) {
+        if (!preMode) log('PlayHQ game is set up – waiting for the first ball');
+        preMode = true; srcOk = true; lastErr = ''; fails = 0; publishPre();
+        pill(rp.on ? 'ok' : 'wait', rp.on ? 'Pre-game screen on' : 'Paused'); renderStatus();
+        await tick(POLL_MS); continue;
       }
       if (preMode) { preMode = false; log('PlayHQ scoring has started'); }
       srcOk = true;
@@ -354,7 +368,7 @@ function renderPre() {
   const nm = k => esc(teamFor(k).name);
   el.innerHTML = `<h3>Pre-game screen</h3>
     <label class="muted">Toss</label>
-    <div class="row"><select data-pre="tossWin"><option value="">Not known yet</option><option value="home" ${rp.pre.tossWin === 'home' ? 'selected' : ''}>${nm('home')}</option><option value="away" ${rp.pre.tossWin === 'away' ? 'selected' : ''}>${nm('away')}</option></select>
+    <div class="row"><select data-pre="tossWin"><option value="">${phqPre && phqPre.toss ? 'As on PlayHQ' : 'Not known yet'}</option><option value="home" ${rp.pre.tossWin === 'home' ? 'selected' : ''}>${nm('home')}</option><option value="away" ${rp.pre.tossWin === 'away' ? 'selected' : ''}>${nm('away')}</option></select>
       <select data-pre="tossChose"><option value="bat" ${rp.pre.tossChose !== 'bowl' ? 'selected' : ''}>chose to bat</option><option value="bowl" ${rp.pre.tossChose === 'bowl' ? 'selected' : ''}>chose to bowl</option></select></div>
     <label class="muted" style="display:block;margin-top:10px">Opening batters</label>
     <input type="text" data-pre="openers" value="${esc(rp.pre.openers)}" placeholder="e.g. Sam Smith & Alex Jones">
@@ -379,7 +393,13 @@ function renderStatus() {
       : 'Go back to the game on playhq.com (reload it if it looks stuck) and tap the <b>📡 Cricket relay</b> bookmark again.';
     el.innerHTML = `<div class="bad"><b>${esc(lastErr)}.</b> ${fix}</div>`; return;
   }
-  if (preMode) { el.innerHTML = `<p><b>PlayHQ scoring hasn't started yet.</b></p><p class="muted">The overlay is showing the pre-game screen. It switches to the score bar by itself at the first ball.</p>`; renderPre(); return; }
+  if (!preMode) { const c = $('#precard'); if (c && c.dataset.on) { c.style.display = 'none'; delete c.dataset.on; } }
+  if (preMode) {
+    const P = phqPre || {}, L = P.lineups, n = k => (L && L[k] ? L[k].length : 0);
+    el.innerHTML = `<p><b>No balls bowled on PlayHQ yet.</b></p><p class="muted">The overlay is showing the pre-game screen. It switches to the score bar by itself at the first ball.</p>
+      <p class="muted">Toss: ${esc(tossLine() || P.toss || 'not on PlayHQ yet')}<br>Line-ups from PlayHQ: ${L && (n('home') || n('away')) ? `${esc(teamFor('home').name)} ${n('home')}, ${esc(teamFor('away').name)} ${n('away')} players` : 'not entered yet'}</p>`;
+    renderPre(); return;
+  }
   if (!lastState) { el.innerHTML = `<p class="muted">Connecting to PlayHQ…</p>`; return; }
   const s = lastState, i = s.innings[s.current], bat = teamFor(i.bat), bowl = teamFor(i.bowl);
   const st = i.batters[i.striker], ns = i.batters[i.nonStriker], bw = i.bowlers[i.bowler];

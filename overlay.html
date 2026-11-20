@@ -118,6 +118,11 @@
   .pg-t .nm { font-size:64px; font-weight:900; letter-spacing:1px; text-transform:uppercase; text-align:center; line-height:1; padding:0 24px; }
   .pg-v { display:flex; align-items:center; justify-content:center; background:var(--navy); color:#fff; font-size:76px; font-weight:900; font-style:italic; }
   .pg-info { background:#f6f7fb; color:var(--ink); text-align:center; padding:18px 30px; font-size:34px; font-weight:800; letter-spacing:2px; text-transform:uppercase; }
+  .pg.xi .pg-teams { height:270px; }
+  .pg-xi { display:grid; grid-template-columns:1fr 150px 1fr; background:#fff; padding:18px 0 20px; border-top:1px solid #e3e6f0; }
+  .pg-xi ol { margin:0; padding:0 44px; list-style:none; columns:2; column-gap:28px; font-size:27px; font-weight:700; color:var(--ink); line-height:1.4; counter-reset:n; }
+  .pg-xi li { break-inside:avoid; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pg-xi li::before { counter-increment:n; content:counter(n); display:inline-block; width:1.7em; color:#8a90b0; font-weight:800; }
   .pg-toss { background:#0b0e2c; color:#fff; text-align:center; padding:16px 30px; font-size:38px; font-weight:800; letter-spacing:1px; text-transform:uppercase; }
   .pg-toss b { color:#ffd166; }
   .pg-open { background:linear-gradient(180deg,var(--navy2),var(--navy)); color:#fff; display:flex; align-items:center; justify-content:center; gap:26px; padding:16px 30px; font-size:40px; font-weight:800; text-transform:uppercase; }
@@ -804,9 +809,12 @@ function showPre(p) {
   const side = t => `<div class="pg-t" style="${teamVars(t)}"><div class="crest-b">${badge(t, 170)}</div><div class="nm">${esc(t.name)}</div></div>`;
   const toss = p.toss ? p.toss.replace(/^(.*?) won the toss/i, (_, n) => `<b>${esc(n)}</b> won the toss`) : '';
   const opens = String(p.openers || '').split(/\s*(?:&|,|\band\b|\+|\/)\s*/i).filter(Boolean).map(esc).join(' &nbsp;&amp;&nbsp; ');
-  el.innerHTML = `<div class="pg">
+  const L = p.lineups || {}, names = k => (Array.isArray(L[k]) ? L[k] : []).filter(Boolean).slice(0, 16);
+  const xi = names('home').length || names('away').length
+    ? `<div class="pg-xi">${['home', 'away'].map(k => `<ol>${names(k).map(n => `<li>${esc(n)}</li>`).join('')}</ol>`).join('<div></div>')}</div>` : '';
+  el.innerHTML = `<div class="pg${xi ? ' xi' : ''}">
     <div class="pg-top"><i></i>COMING UP<i></i></div>
-    <div class="pg-teams">${side(home)}<div class="pg-v">V</div>${side(away)}</div>
+    <div class="pg-teams">${side(home)}<div class="pg-v">V</div>${side(away)}</div>${xi}
     ${info ? `<div class="pg-info">${esc(info)}</div>` : ''}
     ${toss ? `<div class="pg-toss">${toss}</div>` : ''}
     ${opens ? `<div class="pg-open"><span>OPENING BATTERS</span>${opens}</div>` : ''}</div>`;
